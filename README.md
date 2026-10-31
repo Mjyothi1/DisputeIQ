@@ -149,30 +149,41 @@ Re-run with a real provider for meaningful accuracy and cost.
 
 ## Screenshots
 
-Taken from the running app (seeded demo data, mock provider).
+Screenshots captured from the running application using seeded demo data.
 
-|||
-|-|-|
-|Analyst queue|!\[queue](docs/screenshots/queue.png)|
-|Case detail (friendly-fraud flag)|!\[case](docs/screenshots/case-detail.png)|
-|Auto-resolved duplicate|!\[auto](docs/screenshots/case-auto-resolved.png)|
-|Submit complaint|!\[submit](docs/screenshots/submit.png)|
-|Metrics|!\[metrics](docs/screenshots/metrics.png)|
-|Dark mode|!\[dark](docs/screenshots/queue-dark.png)|
+### Analyst Queue
+![Analyst Queue](docs/screenshots/queue.png)
+
+### Case Detail: Friendly Fraud Flag
+![Case Detail](docs/screenshots/case-detail.png)
+
+### Auto-Resolved Duplicate
+![Auto-Resolved Case](docs/screenshots/case-auto-resolved.png)
+
+### Submit Complaint
+![Submit Complaint](docs/screenshots/submit.png)
+
+### Metrics Dashboard
+![Metrics Dashboard](docs/screenshots/metrics.png)
+
+### Dark Mode
+![Dark Mode](docs/screenshots/queue-dark.png)
 
 ## Deployment
 
-* **Database:** Supabase (Postgres). Run `create extension vector;` once, then set `DATABASE\_URL`
-(`postgresql+psycopg://...`) on the backend; migrations run on start.
-* **Backend:** Render via [render.yaml](render.yaml) (or Railway with the same Dockerfile).
-Set `CORS\_ORIGINS` to the frontend URL and `GEMINI\_API\_KEY` (plus optional `GEMINI\_MODEL`)
-in the dashboard. Do not enable paid Gemini billing for this project.
-* **Frontend:** Vercel, root `frontend/`, env `VITE\_API\_URL=<backend URL>`
-([vercel.json](frontend/vercel.json) handles SPA routing).
-* Seed the hosted DB once from your machine:
-`DATABASE\_URL=... python -m data\_gen.seed --seed 42 --anchor <today> --reset`.
+DisputeIQ is deployed as a full-stack prototype.
 
-These configs were written but not deployed or run from the build environment.
+- Frontend: https://dispute-iq-beryl.vercel.app/
+- Backend: https://disputeiq-backend.onrender.com
+- Health Check: https://disputeiq-backend.onrender.com/health
+- Database: PostgreSQL hosted on Render.
+- AI Provider: Google Gemini.
+
+The frontend is hosted on Vercel, while the FastAPI backend and PostgreSQL database are hosted on Render.
+
+The deployment is intended for prototype demonstration and evaluation, not production banking operations. Complaint submission still requires end-to-end validation.
+
+Note: The free Render PostgreSQL database has a limited lifetime and should not be treated as permanent production storage.
 
 ## Limitations
 
