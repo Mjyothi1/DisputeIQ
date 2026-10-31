@@ -1,0 +1,71 @@
+# DisputeIQ rules configuration: reason-code taxonomy, time windows and thresholds.
+#
+# IMPORTANT: this is a simplified, ILLUSTRATIVE model written for this prototype.
+# It is NOT derived from, and must not be read as, any card-network rulebook.
+# All windows and thresholds below are placeholder values and fully configurable.
+
+thresholds:
+  auto_confidence: 0.85          # min confidence for auto-resolution
+  auto_max_amount_inr: 10000     # max amount for auto-resolution
+  auto_resolve_codes:            # only these codes may ever auto-resolve (and only as REFUND)
+    - DUPLICATE_CHARGE
+    - ATM_CASH_NOT_DISPENSED
+  duplicate_window_hours: 24     # same card + merchant + amount within this window = duplicate
+  amount_tolerance_pct: 5        # transaction-matching amount tolerance
+  match_window_days: 14          # date window around the customer's approximate date
+  min_match_score: 0.5           # below this, no transaction is considered matched
+  frequent_disputer_count: 3     # disputes in last 12 months at/above which a customer is flagged
+  history_lookback_days: 365
+
+# evidence check names used below:
+#   duplicate_charge, strong_authentication, refund_issued,
+#   subscription_cancelled, dispute_history, atm_failure, amount_mismatch
+reason_codes:
+  FRAUD_NOT_AUTHORISED:
+    description: Customer says they did not make or authorise the transaction.
+    window_days: 120
+    required_evidence: []
+    weakened_by: [strong_authentication]   # OTP_3DS / PIN on the transaction suggests friendly fraud
+    typical_evidence: [Authentication method, unusual merchant or city, dispute history]
+  DUPLICATE_CHARGE:
+    description: Customer was charged twice for the same purchase.
+    window_days: 120
+    required_evidence: [duplicate_charge]
+    weakened_by: []
+    typical_evidence: [Second matching transaction on same card, merchant and amount]
+  GOODS_NOT_RECEIVED:
+    description: Goods or services paid for were never delivered.
+    window_days: 120
+    required_evidence: []
+    weakened_by: []
+    typical_evidence: [Order details, delivery status, merchant correspondence]
+  NOT_AS_DESCRIBED:
+    description: Goods or services received were materially different or defective.
+    window_days: 120
+    required_evidence: []
+    weakened_by: []
+    typical_evidence: [Photos, merchant correspondence, return attempt]
+  CANCELLED_RECURRING:
+    description: Customer was billed on a recurring plan after cancelling it.
+    window_days: 120
+    required_evidence: [subscription_cancelled]
+    weakened_by: []
+    typical_evidence: [Cancellation record dated before the charge]
+  INCORRECT_AMOUNT:
+    description: The amount charged differs from the amount agreed.
+    window_days: 120
+    required_evidence: [amount_mismatch]
+    weakened_by: []
+    typical_evidence: [Receipt or invoice showing the agreed amount]
+  REFUND_NOT_PROCESSED:
+    description: Merchant promised a refund that never arrived.
+    window_days: 120
+    required_evidence: []
+    weakened_by: [refund_issued]
+    typical_evidence: [Refund confirmation from merchant, no matching credit]
+  ATM_CASH_NOT_DISPENSED:
+    description: ATM debited the account but did not dispense (all) cash.
+    window_days: 30
+    required_evidence: [atm_failure]
+    weakened_by: []
+    typical_evidence: [ATM journal log, dispense status, debit record]

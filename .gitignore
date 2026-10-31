@@ -1,0 +1,17 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+dist/
+pgdata/
+eval/results/20*.json
+eval/results/20*.md
+!eval/results/.gitkeep
+data_gen/.complaint_cache.json
+
+*.db

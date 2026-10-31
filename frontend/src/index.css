@@ -1,0 +1,65 @@
+@import "@fontsource-variable/public-sans";
+@import "@fontsource-variable/source-serif-4";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 244 246 248;
+    --surface: 255 255 255;
+    --foreground: 15 28 42;
+    --muted: 232 236 241;
+    --muted-foreground: 87 102 119;
+    --border: 213 220 229;
+    --ring: 14 90 107;
+    --primary: 14 90 107;
+    --primary-foreground: 255 255 255;
+    --accent: 224 239 243;
+    --pass: 22 118 68;
+    --fail: 179 38 30;
+    --warn: 154 88 6;
+    --info: 52 86 150;
+    color-scheme: light;
+  }
+  .dark {
+    --background: 11 18 26;
+    --surface: 17 27 38;
+    --foreground: 230 236 242;
+    --muted: 27 39 52;
+    --muted-foreground: 150 165 180;
+    --border: 40 55 71;
+    --ring: 92 184 204;
+    --primary: 92 184 204;
+    --primary-foreground: 8 24 32;
+    --accent: 20 44 54;
+    --pass: 90 200 142;
+    --fail: 244 124 114;
+    --warn: 236 176 78;
+    --info: 134 174 238;
+    color-scheme: dark;
+  }
+  html {
+    font-feature-settings: "tnum", "cv11";
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* A drafted letter is shown as a sheet of paper, in a serif. */
+  .paper {
+    @apply rounded-control border border-border bg-surface px-5 py-4 font-serif text-[15px] leading-7;
+  }
+}

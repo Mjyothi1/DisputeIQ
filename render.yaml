@@ -1,0 +1,31 @@
+# Render Blueprint: backend API (Docker). Database: Supabase (Postgres + pgvector).
+# Frontend: Vercel (see frontend/vercel.json). Secrets are set in the dashboard, never committed.
+services:
+  - type: web
+    name: disputeiq-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    dockerCommand: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: DATABASE_URL        # Supabase connection string, e.g. postgresql+psycopg://...
+        sync: false
+      - key: CORS_ORIGINS        # your Vercel URL, e.g. https://disputeiq.vercel.app
+        sync: false
+      - key: APP_ENV
+        value: production
+      - key: LLM_PROVIDER
+        value: gemini            # default: Google Gemini Flash free tier (never silently falls back to mock)
+      - key: GEMINI_API_KEY
+        sync: false              # Google AI Studio free-tier key — set in the Render dashboard
+      - key: GEMINI_MODEL
+        value: gemini-3.8-flash  # free-tier Flash; change only if Google renames the free model
+      - key: LLM_MODEL
+        sync: false              # optional override of GEMINI_MODEL
+      - key: ANTHROPIC_API_KEY
+        sync: false              # optional alternate provider
+      - key: OPENAI_API_KEY
+        sync: false              # optional alternate provider
+      - key: EMBEDDING_PROVIDER
+        value: hash
