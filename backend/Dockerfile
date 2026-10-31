@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir ".[dev]"
+RUN pip install --no-cache-dir -e ".[dev,postgres]" || pip install --no-cache-dir ".[dev,postgres]"
 
 COPY . .
 
