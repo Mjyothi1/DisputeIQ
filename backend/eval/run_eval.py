@@ -217,10 +217,18 @@ def to_markdown(rep: dict[str, Any]) -> str:
     return "\n".join(L) + "\n"
 
 
-def run(limit: int | None = None, out_dir: Path = RESULTS_DIR) -> dict[str, Any]:
+def run(
+    limit: int | None = None,
+    out_dir: Path = RESULTS_DIR,
+    provider: str | None = None,
+) -> dict[str, Any]:
+    from app.core.config import Settings
     from app.db.session import get_session_factory
 
-    settings, cfg = get_settings(), get_rules_config()
+    settings = get_settings()
+    if provider:
+        settings = Settings(llm_provider=provider)
+    cfg = get_rules_config()
     outcomes: list[CaseOutcome] = []
     with get_session_factory()() as session:
         stmt = (
@@ -231,7 +239,7 @@ def run(limit: int | None = None, out_dir: Path = RESULTS_DIR) -> dict[str, Any]
         if limit:
             stmt = stmt.limit(limit)
         ids = [d.id for d in session.scalars(stmt)]
-        pipeline = build_pipeline(session)
+        pipeline = build_pipeline(session, settings=settings)
         for did in ids:
             res: ProcessResult = pipeline.run(did)
             d = session.get(models.Dispute, did)
@@ -290,8 +298,14 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument(
+        "--provider",
+        choices=["mock", "gemini", "anthropic", "openai"],
+        default=None,
+        help="LLM provider (default: from .env)",
+    )
     args = ap.parse_args()
-    rep = run(args.limit)
+    rep = run(limit=args.limit, provider=args.provider)
     print(to_markdown(rep))
 
 

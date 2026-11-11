@@ -201,6 +201,17 @@ export interface EvalHeadline {
   note: string;
 }
 
+export interface RecommendationSummary {
+  dispute_id: number;
+  case_ref: string;
+  recommendation: Recommendation;
+  rationale: string;
+  confidence: number;
+  requires_approval: boolean;
+  reason_code?: string | null;
+  customer_name?: string | null;
+}
+
 export interface Metrics {
   cases_total: number;
   cases_processed: number;
@@ -217,8 +228,11 @@ export interface Metrics {
   deadline_at_risk: number;
   friendly_fraud_flagged: number;
   injection_flagged: number;
+  suspicious_flagged?: number;
   by_reason_code: Record<string, number>;
   by_recommendation: Record<string, number>;
+  by_channel?: Record<string, number>;
+  recent_recommendations?: RecommendationSummary[];
   llm_provider_note: string | null;
   evaluation: EvalHeadline | null;
 }

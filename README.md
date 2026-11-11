@@ -30,7 +30,7 @@ flowchart LR
   AG --> TOOLS\[Evidence tools]
 ```
 
-Pipeline: `mask\_pii → intake\_extract → match\_transaction → run\_evidence\_checks → classify\_reason\_code → eligibility\_engine → recommend → draft\_documents → route`.
+Pipeline: `mask\_pii â†’ intake\_extract â†’ match\_transaction â†’ run\_evidence\_checks â†’ classify\_reason\_code â†’ eligibility\_engine â†’ recommend â†’ draft\_documents â†’ route`.
 Every node writes an audit event. Details: [docs/architecture.md](docs/architecture.md).
 
 Safety properties:
@@ -46,15 +46,15 @@ REFUND on duplicate/ATM cases. Every rejection goes to a human.
 ```bash
 cp .env.example .env
 docker compose up --build -d
-docker compose exec backend python -m data\_gen.seed --seed 42 --anchor 2026-10-27 --reset
-docker compose exec backend python -m data\_gen.build\_memory
+# Seed only a new disposable database; never reset existing data.
+# Build memory only after seeding a separate disposable database.
 ```
 
 * UI: http://localhost:5173
 * API docs: http://localhost:8000/docs
 * Default LLM is **Google Gemini Flash** (`LLM\_PROVIDER=gemini`, model `gemini-3.5-flash-lite` via
 `GEMINI\_MODEL`). Set `GEMINI\_API\_KEY` from [Google AI Studio](https://aistudio.google.com/apikey)
-(free tier). For offline unit tests only, set `LLM\_PROVIDER=mock` explicitly — failures never
+(free tier). For offline unit tests only, set `LLM\_PROVIDER=mock` explicitly â€” failures never
 silently fall back to mock.
 
 Then run the demo: [docs/demo.md](docs/demo.md).
@@ -73,8 +73,8 @@ numbers in this README for SQLite differ only in estimated cost). Use PostgreSQL
 cd backend \&\& python3 -m venv .venv \&\& . .venv/bin/activate
 pip install -e ".\[dev]"
 alembic upgrade head
-python -m data\_gen.seed --seed 42 --anchor 2026-10-27 --reset
-python -m data\_gen.build\_memory
+# Seed only a new disposable database; never reset existing data.
+# Build memory only after seeding a separate disposable database.
 uvicorn app.main:app --reload
 
 # frontend
@@ -96,14 +96,12 @@ cd ../frontend \&\& npm test \&\& npm run lint \&\& npm run build
 ## Using Gemini Flash (default), LLM-written complaints and Langfuse
 
 1. In `.env` set `LLM\_PROVIDER=gemini`, `GEMINI\_API\_KEY=<Google AI Studio free-tier key>`, and
-optionally `GEMINI\_MODEL` (default `gemini-3.5-flash-lite`). The key stays on the backend only —
+optionally `GEMINI\_MODEL` (default `gemini-3.5-flash-lite`). The key stays on the backend only â€”
 never in the frontend. Alternate providers (`anthropic` / `openai`) remain available.
 2. Verify a live call: `cd backend \&\& python -m app.agent.cli --ping-llm` (or process a dispute).
 Rate-limit / quota / invalid-key errors are logged and shown; the app does **not** invent
 analysis or switch to mock.
-3. Complaint texts written by the LLM (varied styles, Hinglish, typos), with fact validation and
-template fallback: `python -m data\_gen.seed --seed 42 --anchor 2026-10-27 --reset --llm`
-then `python -m data\_gen.build\_memory`.
+3. LLM-written complaint generation is intended only for a separate disposable database. Never run it against the existing project database.
 4. Tracing: `pip install -e ".\[langfuse]"`, set `LANGFUSE\_ENABLED=true`, `LANGFUSE\_PUBLIC\_KEY`,
 `LANGFUSE\_SECRET\_KEY` (and `LANGFUSE\_HOST` for self-hosted). Every LLM call and pipeline run is
 traced with tokens and cost; only PII-masked text is sent.
@@ -181,7 +179,7 @@ DisputeIQ is deployed as a full-stack prototype.
 
 The frontend is hosted on Vercel, while the FastAPI backend and PostgreSQL database are hosted on Render.
 
-The deployment is intended for prototype demonstration and evaluation, not production banking operations. Complaint submission still requires end-to-end validation.
+The deployment is intended for prototype demonstration and evaluation, not production banking operations. Local end-to-end complaint submission has been tested. The deployed frontend and backend health endpoint have been verified separately; the complete deployed complaint flow still requires validation.
 
 Note: The free Render PostgreSQL database has a limited lifetime and should not be treated as permanent production storage.
 
@@ -198,4 +196,3 @@ pgvector were verified locally outside Docker).
 
 Design decisions are logged in [DECISIONS.md](DECISIONS.md); API in [docs/api.md](docs/api.md);
 taxonomy in [docs/reason-codes.md](docs/reason-codes.md).
-

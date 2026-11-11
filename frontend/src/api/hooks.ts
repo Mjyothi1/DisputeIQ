@@ -48,6 +48,7 @@ export function useReview(id: number) {
     onSuccess: (data) => {
       qc.setQueryData(["case", id], data);
       void qc.invalidateQueries({ queryKey: ["queue"] });
+      void qc.invalidateQueries({ queryKey: ["metrics"] });
     },
   });
 }

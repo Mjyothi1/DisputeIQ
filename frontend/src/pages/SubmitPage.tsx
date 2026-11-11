@@ -1,13 +1,14 @@
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "@/api/client";
 import { useCustomers, useRecentTxns } from "@/api/hooks";
 import type { Channel, RecentTxn } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
-import { formatDate, formatInr } from "@/lib/format";
+import { caseRef, formatDate, formatInr } from "@/lib/format";
 
 const money = (t: RecentTxn) => formatInr(t.amount).replace(/\.00$/, "");
 
@@ -32,6 +33,7 @@ export const TEMPLATES: { label: string; build: (t: RecentTxn) => string }[] = [
 export function SubmitPage() {
   const nav = useNavigate();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const customers = useCustomers(search);
   const [customerId, setCustomerId] = useState<number | null>(null);
@@ -43,17 +45,24 @@ export function SubmitPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (customerId === null || tooShort) return;
+    if (busy || customerId === null || tooShort) return;
     setBusy(true);
     try {
-      const res = await api.submit({ customer_id: customerId, channel, raw_text: text.trim() });
-      toast.success("Complaint received. The agent is processing it.");
+      const res = await api.submit({ customer_id: customerId, channel, raw_text: text.trim() }, true);
+      // Invalidate queries so queue, metrics, and cases update immediately
+      void queryClient.invalidateQueries({ queryKey: ["queue"] });
+      void queryClient.invalidateQueries({ queryKey: ["metrics"] });
+      void queryClient.invalidateQueries({ queryKey: ["case", res.dispute_id] });
+
+      toast.success(`Complaint ${caseRef(res.dispute_id)} submitted and analyzed by AI.`);
       nav(`/cases/${res.dispute_id}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not submit the complaint.");
       setBusy(false);
     }
   }
+
+  const customerList = customers.data ?? [];
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -67,27 +76,48 @@ export function SubmitPage() {
         className="space-y-5 rounded-panel border border-border bg-surface p-5"
       >
         <div>
-          <Label htmlFor="cust-search">Customer</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="cust-search">Select Customer <span className="text-fail">*</span></Label>
+            {customerId !== null && (
+              <span className="text-xs text-pass font-medium">Customer selected</span>
+            )}
+          </div>
           <Input
             id="cust-search"
             placeholder="Search by name"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <Select
-            aria-label="Select customer"
-            className="mt-2"
-            size={5}
-            value={customerId ?? ""}
-            onChange={(e) => setCustomerId(Number(e.target.value))}
-          >
-            {(customers.data ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} · {c.cards.join(", ")}
-              </option>
-            ))}
-          </Select>
-          {customers.isError && <p className="mt-1 text-sm text-fail">{customers.error.message}</p>}
+          {customers.isLoading ? (
+            <div className="mt-2 p-3 text-center text-sm text-muted-foreground bg-muted/30 rounded-control">
+              <Loader2 className="inline-block h-4 w-4 animate-spin mr-2" /> Loading customer records...
+            </div>
+          ) : customers.isError ? (
+            <p className="mt-1 text-sm text-fail">{customers.error.message}</p>
+          ) : customerList.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">No customers found matching &quot;{search}&quot;.</p>
+          ) : (
+            <Select
+              id="cust-select"
+              aria-label="Select Customer"
+              className="mt-2"
+              size={5}
+              value={customerId ?? ""}
+              onChange={(e) => setCustomerId(Number(e.target.value))}
+              required
+            >
+              {customerList.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} · {c.cards.length > 0 ? c.cards.join(", ") : "Card ending 1001"}
+                </option>
+              ))}
+            </Select>
+          )}
+          {customerId === null && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Please choose a customer from the list above.
+            </p>
+          )}
         </div>
 
         <div>
@@ -105,7 +135,7 @@ export function SubmitPage() {
         </div>
 
         <div>
-          <Label htmlFor="complaint">Complaint</Label>
+          <Label htmlFor="complaint">Complaint <span className="text-fail">*</span></Label>
           <Textarea
             id="complaint"
             rows={6}
@@ -113,6 +143,7 @@ export function SubmitPage() {
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Describe what went wrong, in your own words."
+            required
           />
           {customerId !== null && txns.data && txns.data.length > 0 && (
             <details className="mt-2 text-sm">
@@ -143,7 +174,8 @@ export function SubmitPage() {
         </div>
 
         <Button type="submit" disabled={busy || customerId === null || tooShort}>
-          {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} Submit complaint
+          {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+          {busy ? "Analyzing complaint with AI..." : "Submit complaint"}
         </Button>
       </form>
     </div>

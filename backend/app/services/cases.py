@@ -46,9 +46,14 @@ def _conditions(f: QueueFilter, now: datetime) -> list[ColumnElement[bool]]:
         c.append(m.Dispute.deadline_at.is_not(None))
         c.append(m.Dispute.deadline_at <= now + timedelta(days=f.max_days_to_deadline))
     if f.q:
-        like = f"%{f.q.strip()}%"
+        import re
+
+        q_clean = f.q.strip()
+        like = f"%{q_clean}%"
         ors: list[ColumnElement[bool]] = [
             m.Dispute.masked_text.ilike(like),
+            m.Dispute.raw_text.ilike(like),
+            m.Dispute.reason_code.ilike(like),
             m.Dispute.customer_id.in_(select(m.Customer.id).where(m.Customer.name.ilike(like))),
             m.Dispute.matched_txn_id.in_(
                 select(m.Transaction.id)
@@ -56,8 +61,9 @@ def _conditions(f: QueueFilter, now: datetime) -> list[ColumnElement[bool]]:
                 .where(m.Merchant.name.ilike(like))
             ),
         ]
-        if f.q.strip().isdigit():
-            ors.append(m.Dispute.id == int(f.q.strip()))
+        id_match = re.match(r"(?i)^(?:diq-?)?0*(\d+)$", q_clean)
+        if id_match:
+            ors.append(m.Dispute.id == int(id_match.group(1)))
         c.append(or_(*ors))
     return c
 

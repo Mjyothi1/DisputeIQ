@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.schemas import Metrics
+from app.api.schemas import Metrics, RecommendationSummary
 from app.core.config import get_settings
 from app.core.timeutil import as_utc, utcnow
 from app.db import models as m
@@ -78,6 +78,43 @@ def compute_metrics(
     overdue = len([dl for dl in deadlines if dl < now])
     at_risk = len([dl for dl in deadlines if now <= dl <= now + timedelta(days=AT_RISK_DAYS)])
 
+    recent_decisions = session.scalars(
+        select(m.Decision).order_by(m.Decision.id.desc()).limit(8)
+    ).all()
+    recent_recs = []
+    for d in recent_decisions:
+        disp = session.get(m.Dispute, d.dispute_id)
+        if disp and disp.customer:
+            recent_recs.append(
+                RecommendationSummary(
+                    dispute_id=disp.id,
+                    case_ref=f"DIQ-{disp.id:06d}",
+                    recommendation=d.recommendation,
+                    rationale=d.rationale,
+                    confidence=d.confidence,
+                    requires_approval=disp.status not in (
+                        DisputeStatus.AUTO_RESOLVED,
+                        DisputeStatus.APPROVED,
+                        DisputeStatus.REJECTED,
+                        DisputeStatus.OVERRIDDEN,
+                    ),
+                    reason_code=disp.reason_code,
+                    customer_name=disp.customer.name,
+                )
+            )
+
+    by_channel = {
+        k.value: v
+        for k, v in session.execute(
+            select(m.Dispute.channel, func.count()).group_by(m.Dispute.channel)
+        ).all()
+    }
+    suspicious_count = session.scalar(
+        select(func.count(m.Dispute.id)).where(
+            m.Dispute.reason_code == "FRAUD_NOT_AUTHORISED"
+        )
+    ) or 0
+
     settings = get_settings()
     return Metrics(
         cases_total=total, cases_processed=processed, by_status=by_status,
@@ -90,6 +127,7 @@ def compute_metrics(
         deadline_violations=overdue, deadline_at_risk=at_risk,
         friendly_fraud_flagged=sum(1 for d in latest_dec.values() if d.friendly_fraud_flag),
         injection_flagged=_count_injections(session),
+        suspicious_flagged=suspicious_count,
         by_reason_code={k: v for k, v in session.execute(
             select(m.Dispute.reason_code, func.count()).where(m.Dispute.reason_code.is_not(None)).group_by(m.Dispute.reason_code)
         ).all()},
@@ -98,6 +136,8 @@ def compute_metrics(
                 m.Decision.id.in_([d.id for d in latest_dec.values()])
             ).group_by(m.Decision.recommendation)
         ).all()},
+        by_channel=by_channel,
+        recent_recommendations=recent_recs,
         llm_provider_note=(
             "Provider 'mock' is an offline rule-based stand-in; cost and latency are estimates. "
             "Set LLM_PROVIDER=gemini and GEMINI_API_KEY for real Gemini Flash analysis."

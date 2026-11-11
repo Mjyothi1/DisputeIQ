@@ -74,8 +74,8 @@ export function queueQueryString(q: QueueQuery): string {
 export const api = {
   queue: (q: QueueQuery) => request<DisputePage>(`/disputes?${queueQueryString(q)}`),
   case: (id: number) => request<CaseDetail>(`/disputes/${id}`),
-  submit: (body: { customer_id: number; channel: Channel; raw_text: string }) =>
-    request<Accepted>("/disputes", { method: "POST", body: JSON.stringify(body) }),
+  submit: (body: { customer_id: number; channel: Channel; raw_text: string }, wait = true) =>
+    request<Accepted>(`/disputes${wait ? "?wait=true" : ""}`, { method: "POST", body: JSON.stringify(body) }),
   process: (id: number) => request<Accepted>(`/disputes/${id}/process`, { method: "POST" }),
   review: (id: number, body: ReviewRequest) =>
     request<CaseDetail>(`/disputes/${id}/review`, { method: "POST", body: JSON.stringify(body) }),

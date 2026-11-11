@@ -84,14 +84,21 @@ def test_cost_table_and_unknown_model_default() -> None:
 
 
 def test_resolve_model_prefers_gemini_model_then_llm_model() -> None:
-    assert resolve_model(Settings(llm_provider="gemini")) == "gemini-3.8-flash"
+    assert resolve_model(Settings(_env_file=None, llm_provider="gemini")) == "gemini-3.8-flash"
     assert (
-        resolve_model(Settings(llm_provider="gemini", gemini_model="gemini-3.5-flash-lite"))
+        resolve_model(
+            Settings(_env_file=None, llm_provider="gemini", gemini_model="gemini-3.5-flash-lite")
+        )
         == "gemini-3.5-flash-lite"
     )
     assert (
         resolve_model(
-            Settings(llm_provider="gemini", gemini_model="gemini-3.8-flash", llm_model="gemini-x")
+            Settings(
+                _env_file=None,
+                llm_provider="gemini",
+                gemini_model="gemini-3.8-flash",
+                llm_model="gemini-x",
+            )
         )
         == "gemini-x"
     )

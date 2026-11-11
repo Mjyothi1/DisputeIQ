@@ -1,6 +1,6 @@
 import { AlertTriangle, ChevronLeft, ChevronRight, Search } from "lucide-react";
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useConfig, useQueue } from "@/api/hooks";
 import type { DisputeSummary, QueueQuery, Status } from "@/api/types";
 import { RecommendationBadge, StatusBadge } from "@/components/badges";
@@ -14,7 +14,8 @@ import { cn } from "@/lib/utils";
 
 const PRESETS: { key: string; label: string; status: Status[] }[] = [
   { key: "review", label: "Needs review", status: ["NEEDS_HUMAN"] },
-  { key: "active", label: "In progress", status: ["NEW", "PROCESSING"] },
+  { key: "new", label: "New", status: ["NEW"] },
+  { key: "active", label: "In progress", status: ["PROCESSING"] },
   { key: "auto", label: "Auto-resolved", status: ["AUTO_RESOLVED"] },
   { key: "closed", label: "Closed", status: ["APPROVED", "REJECTED", "OVERRIDDEN"] },
   { key: "all", label: "All", status: [] },
@@ -22,15 +23,24 @@ const PRESETS: { key: string; label: string; status: Status[] }[] = [
 const PAGE_SIZE = 25;
 
 export function QueuePage() {
+  const [searchParams] = useSearchParams();
   const config = useConfig();
   const threshold = config.data?.auto_confidence ?? 0.85;
   const atRisk = config.data?.at_risk_days ?? 7;
-  const [preset, setPreset] = useState("review");
-  const [search, setSearch] = useState("");
+  const [preset, setPreset] = useState(searchParams.get("preset") ?? "review");
+  const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [sort, setSort] = useState<QueueQuery["sort"]>("urgency");
   const [dueSoon, setDueSoon] = useState(false);
   const [lowConf, setLowConf] = useState(false);
   const [page, setPage] = useState(1);
+
+  // Sync with searchParams when navigating from metrics links
+  useEffect(() => {
+    const p = searchParams.get("preset");
+    const q = searchParams.get("q");
+    if (p && PRESETS.some((item) => item.key === p)) setPreset(p);
+    if (q !== null) setSearch(q);
+  }, [searchParams]);
 
   const query: QueueQuery = {
     status: PRESETS.find((p) => p.key === preset)?.status ?? [],
@@ -286,7 +296,7 @@ function Table({
                 <div>
                   <div className="font-medium text-primary">{caseRef(d.id)}</div>
                   <div className="text-sm text-muted-foreground">
-                    {d.customer_name} · {humanize(d.reason_code)}
+                    {d.customer_name} Â· {humanize(d.reason_code)}
                   </div>
                 </div>
                 <StatusBadge status={d.status} />

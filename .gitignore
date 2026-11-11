@@ -15,3 +15,8 @@ eval/results/20*.md
 data_gen/.complaint_cache.json
 
 *.db
+*.tsbuildinfo
+
+# Ignore timestamped backend evaluation outputs
+/backend/eval/results/20*.json
+/backend/eval/results/20*.md

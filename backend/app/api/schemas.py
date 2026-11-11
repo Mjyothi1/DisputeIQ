@@ -193,6 +193,17 @@ class ReasonCodeOut(BaseModel):
     required_evidence: list[str]
 
 
+class RecommendationSummary(BaseModel):
+    dispute_id: int
+    case_ref: str
+    recommendation: Recommendation
+    rationale: str
+    confidence: float
+    requires_approval: bool
+    reason_code: str | None = None
+    customer_name: str | None = None
+
+
 class Metrics(BaseModel):
     cases_total: int
     cases_processed: int
@@ -209,8 +220,11 @@ class Metrics(BaseModel):
     deadline_at_risk: int
     friendly_fraud_flagged: int
     injection_flagged: int
+    suspicious_flagged: int = 0
     by_reason_code: dict[str, int]
     by_recommendation: dict[str, int]
+    by_channel: dict[str, int] = Field(default_factory=dict)
+    recent_recommendations: list[RecommendationSummary] = Field(default_factory=list)
     llm_provider_note: str | None = None
     evaluation: dict[str, Any] | None = None
 

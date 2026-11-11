@@ -391,8 +391,7 @@ def classify_gemini_api_error(
         )
 
     if (
-        code == 429
-        or "resource_exhausted" in blob
+        "resource_exhausted" in blob
         or "quota" in blob
     ):
         return LLMError(
@@ -400,6 +399,9 @@ def classify_gemini_api_error(
             "Check your Google AI Studio quota. "
             "No mock fallback was used."
         )
+
+    if code == 429 and ("too_many_requests" in blob or "rate limit" in blob):
+        return exc
 
     if code == 400 and (
         "billing" in blob or "paid" in blob
