@@ -1,4 +1,5 @@
-# Render Blueprint: backend API (Docker). Database: Supabase (Postgres + pgvector).
+# Render Blueprint: backend API (Docker). Database: Render PostgreSQL (free) or Supabase.
+# Demo bootstrap is opt-in. Docker defaults BOOTSTRAP_DEMO_DATA to false; enable only for a new, isolated demo database.
 # Frontend: Vercel (see frontend/vercel.json). Secrets are set in the dashboard, never committed.
 services:
   - type: web
@@ -7,7 +8,6 @@ services:
     rootDir: backend
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
-    dockerCommand: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: DATABASE_URL        # Supabase connection string, e.g. postgresql+psycopg://...
         sync: false

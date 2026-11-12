@@ -21,16 +21,16 @@ everything else in front of a human with the evidence already assembled.
 
 ```mermaid
 flowchart LR
-  UI\[React + TS UI] -->|REST| API\[FastAPI]
-  API --> AG\[LangGraph agent]
-  API --> DB\[(PostgreSQL + pgvector)]
+  UI[React + TS UI] -->|REST| API[FastAPI]
+  API --> AG[LangGraph agent]
+  API --> DB[(PostgreSQL + pgvector)]
   AG --> DB
   AG --> LLM{{Gemini Flash / mock / Anthropic / OpenAI}}
-  AG --> RULES\[Rules: eligibility, policy, routing]
-  AG --> TOOLS\[Evidence tools]
+  AG --> RULES[Rules: eligibility, policy, routing]
+  AG --> TOOLS[Evidence tools]
 ```
 
-Pipeline: `mask\_pii â†’ intake\_extract â†’ match\_transaction â†’ run\_evidence\_checks â†’ classify\_reason\_code â†’ eligibility\_engine â†’ recommend â†’ draft\_documents â†’ route`.
+Pipeline: `mask_pii → intake_extract → match_transaction → run_evidence_checks → classify_reason_code → eligibility_engine → recommend → draft_documents → route`.
 Every node writes an audit event. Details: [docs/architecture.md](docs/architecture.md).
 
 Safety properties:
@@ -41,71 +41,67 @@ REFUND on duplicate/ATM cases. Every rejection goes to a human.
 * Prompt injection is delimited, detected, and cannot reach decision logic.
 * Friendly-fraud signals (e.g. OTP-authenticated "fraud" claims) are flagged and routed to humans.
 
-## Quick start (Docker)
+## Run it locally (no Docker, free)
+
+Needs only Python 3.11+ and Node 20+. Full steps: [RUN_LOCAL.md](RUN_LOCAL.md).
 
 ```bash
-cp .env.example .env
-docker compose up --build -d
-# Seed only a new disposable database; never reset existing data.
-# Build memory only after seeding a separate disposable database.
+cp .env.example .env                 # add your free GEMINI_API_KEY from Google AI Studio
+cd backend && python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+uvicorn app.main:app --reload --port 8000
+
+# second terminal
+cd frontend && cp .env.example .env && npm install && npm run dev
 ```
 
-* UI: http://localhost:5173
-* API docs: http://localhost:8000/docs
-* Default LLM is **Google Gemini Flash** (`LLM\_PROVIDER=gemini`, model `gemini-3.5-flash-lite` via
-`GEMINI\_MODEL`). Set `GEMINI\_API\_KEY` from [Google AI Studio](https://aistudio.google.com/apikey)
-(free tier). For offline unit tests only, set `LLM\_PROVIDER=mock` explicitly â€” failures never
-silently fall back to mock.
+On first start the backend creates `backend/disputeiq.db` and fills it with the demo dataset
+(seeded relative to today, backlog processed by the offline rule engine so no Gemini quota is
+used). After that the data is kept: restarts never reset it. Live complaints from the
+"Submit complaint" page are analysed by Gemini.
+
+* UI: http://localhost:5173 · API docs: http://localhost:8000/docs
+* PostgreSQL works the same way: set `DATABASE_URL` and run `alembic upgrade head` first; that also
+  enables pgvector similar-case retrieval.
 
 Then run the demo: [docs/demo.md](docs/demo.md).
 
-## Run without Docker (SQLite, nothing to install)
+## Free hosting
 
-See [RUN\_LOCAL.md](RUN_LOCAL.md). In short: set `DATABASE\_URL=sqlite:///./disputeiq.db`, run
-`python -m app.db.init\_db`, seed, start uvicorn and `npm run dev`. SQLite mode has everything except
-pgvector similar-case retrieval (the agent then classifies without past-case context; the
-numbers in this README for SQLite differ only in estimated cost). Use PostgreSQL for the full design.
-
-## Run with local PostgreSQL
-
-```bash
-# backend (needs Postgres with pgvector; `docker compose up -d db` is the easy way)
-cd backend \&\& python3 -m venv .venv \&\& . .venv/bin/activate
-pip install -e ".\[dev]"
-alembic upgrade head
-# Seed only a new disposable database; never reset existing data.
-# Build memory only after seeding a separate disposable database.
-uvicorn app.main:app --reload
-
-# frontend
-cd frontend \&\& cp .env.example .env \&\& npm install \&\& npm run dev
-```
+* **Frontend:** Vercel (Hobby). Root directory `frontend`, env `VITE_API_URL=<backend URL>`.
+* **Backend:** Render free web service (builds `backend/Dockerfile` on Render's servers; you do not
+  need Docker installed). Env: `DATABASE_URL`, `CORS_ORIGINS=<Vercel URL>`, `GEMINI_API_KEY`.
+* **Database:** Render free PostgreSQL. On first boot the API fills the empty database with demo
+  data; it never deletes data.
+* Free-tier limits to know: the Render web service sleeps after ~15 minutes idle (first request
+  then takes about a minute); a Render free database expires 30 days after creation; Gemini's free
+  tier has low per-minute limits, so submit live complaints one at a time.
 
 ## Tests, lint, evaluation
 
 ```bash
 cd backend
 pytest -q                                    # unit + pipeline + API tests (SQLite)
-TEST\_DATABASE\_URL=postgresql+psycopg://disputeiq:disputeiq@localhost:5432/disputeiq pytest -q  # + pgvector tests
-ruff check . \&\& mypy app
-python -m eval.run\_eval                      # 100 held-out TEST cases -> eval/results/
+TEST_DATABASE_URL=postgresql+psycopg://disputeiq:disputeiq@localhost:5432/disputeiq pytest -q  # + pgvector tests
+ruff check . && mypy app
+python -m eval.run_eval                      # 100 held-out TEST cases -> eval/results/
 
-cd ../frontend \&\& npm test \&\& npm run lint \&\& npm run build
+cd ../frontend && npm test && npm run lint && npm run build
 ```
 
 ## Using Gemini Flash (default), LLM-written complaints and Langfuse
 
-1. In `.env` set `LLM\_PROVIDER=gemini`, `GEMINI\_API\_KEY=<Google AI Studio free-tier key>`, and
-optionally `GEMINI\_MODEL` (default `gemini-3.5-flash-lite`). The key stays on the backend only â€”
+1. In `.env` set `LLM_PROVIDER=gemini`, `GEMINI_API_KEY=<Google AI Studio free-tier key>`, and
+optionally `GEMINI_MODEL` (default `gemini-3.5-flash-lite`). The key stays on the backend only —
 never in the frontend. Alternate providers (`anthropic` / `openai`) remain available.
-2. Verify a live call: `cd backend \&\& python -m app.agent.cli --ping-llm` (or process a dispute).
+2. Verify a live call: `cd backend && python -m app.agent.cli --ping-llm` (or process a dispute).
 Rate-limit / quota / invalid-key errors are logged and shown; the app does **not** invent
 analysis or switch to mock.
 3. LLM-written complaint generation is intended only for a separate disposable database. Never run it against the existing project database.
-4. Tracing: `pip install -e ".\[langfuse]"`, set `LANGFUSE\_ENABLED=true`, `LANGFUSE\_PUBLIC\_KEY`,
-`LANGFUSE\_SECRET\_KEY` (and `LANGFUSE\_HOST` for self-hosted). Every LLM call and pipeline run is
+4. Tracing: `pip install -e ".[langfuse]"`, set `LANGFUSE_ENABLED=true`, `LANGFUSE_PUBLIC_KEY`,
+`LANGFUSE_SECRET_KEY` (and `LANGFUSE_HOST` for self-hosted). Every LLM call and pipeline run is
 traced with tokens and cost; only PII-masked text is sent.
-5. `python -m eval.run\_eval` to get real-model numbers.
+5. `python -m eval.run_eval` to get real-model numbers.
 
 ## Evaluation results
 
@@ -119,7 +115,7 @@ Provider: **mock** rule-based baseline, since no LLM API keys were available in 
 |Deadline violations (target 0)|0|
 |Auto-resolution rate / accuracy|18% / 100%|
 |Unsafe auto-resolutions (target 0)|0|
-|Prompt injection handled|2 of 3 (detected 3 of 3; the miss was routed to a human with the wrong action: NEED\_MORE\_INFO instead of REJECT)|
+|Prompt injection handled|2 of 3 (detected 3 of 3; the miss was routed to a human with the wrong action: NEED_MORE_INFO instead of REJECT)|
 |Avg latency|0.02 s (mock; real models will be seconds)|
 |Avg LLM cost per case|INR 1.07 (estimate)|
 
@@ -190,7 +186,7 @@ alternates. Langfuse export is optional and tested against a local stub when dis
 * Default complaints are template-written (an LLM writer is available via `--llm` but was not run here).
 * Simplified taxonomy; no network-specific rules, evidence formats or representment flow.
 * No authentication: the analyst name is typed in the UI. Put SSO in front for real use.
-* Hash embeddings by default (set `EMBEDDING\_PROVIDER=local` for sentence-transformers).
+* Hash embeddings by default (set `EMBEDDING_PROVIDER=local` for sentence-transformers).
 * Docker Compose and deployment configs were not executed in the build sandbox (Postgres and
 pgvector were verified locally outside Docker).
 

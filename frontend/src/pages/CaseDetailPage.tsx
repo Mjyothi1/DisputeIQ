@@ -121,7 +121,11 @@ function Body({ detail }: { detail: CaseDetail }) {
             <div className="mb-1 text-xs text-muted-foreground">
               Deadline {formatDate(detail.deadline_at)}
             </div>
-            <DeadlineGauge days={detail.days_to_deadline} atRiskDays={atRisk} />
+            <DeadlineGauge
+              days={detail.days_to_deadline}
+              atRiskDays={atRisk}
+              filedLate={detail.filed_late}
+            />
           </div>
           {!working &&
             detail.status !== "APPROVED" &&

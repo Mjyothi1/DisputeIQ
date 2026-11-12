@@ -17,6 +17,7 @@ export interface DisputeSummary {
   amount: string | null;
   deadline_at: string | null;
   days_to_deadline: number | null;
+  filed_late: boolean;
   created_at: string;
 }
 
@@ -113,6 +114,7 @@ export interface CaseDetail {
   confidence: number | null;
   deadline_at: string | null;
   days_to_deadline: number | null;
+  filed_late: boolean;
   created_at: string;
   transaction: Transaction | null;
   evidence: Evidence[];

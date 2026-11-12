@@ -27,6 +27,13 @@ class QueueFilter:
     sort: str = "urgency"  # urgency | newest | confidence
 
 
+def filed_late(d: m.Dispute) -> bool:
+    """True when the dispute window had already closed before the customer raised the dispute."""
+    if d.deadline_at is None or d.created_at is None:
+        return False
+    return as_utc(d.deadline_at) < as_utc(d.created_at)
+
+
 def days_until(deadline: datetime | None, now: datetime) -> int | None:
     """Whole days left (floored); negative once the deadline has passed."""
     return None if deadline is None else (as_utc(deadline) - as_utc(now)).days
@@ -45,6 +52,7 @@ def _conditions(f: QueueFilter, now: datetime) -> list[ColumnElement[bool]]:
     if f.max_days_to_deadline is not None:
         c.append(m.Dispute.deadline_at.is_not(None))
         c.append(m.Dispute.deadline_at <= now + timedelta(days=f.max_days_to_deadline))
+        c.append(m.Dispute.deadline_at >= m.Dispute.created_at)  # filed late: nothing to chase
     if f.q:
         import re
 
@@ -74,7 +82,12 @@ def _order(stmt: Select, sort: str) -> Select:  # type: ignore[type-arg]
     if sort == "confidence":
         return stmt.order_by(m.Dispute.confidence.asc().nulls_last(), m.Dispute.id)
     open_first = case((m.Dispute.status.in_(list(OPEN_STATUSES)), 0), else_=1)
-    return stmt.order_by(open_first, m.Dispute.deadline_at.asc().nulls_last(), m.Dispute.id)
+    # A case whose window had already closed when the customer wrote in has no deadline left to
+    # chase; listing it as "most overdue" would bury the cases an analyst can still act on.
+    filed_late_last = case((m.Dispute.deadline_at < m.Dispute.created_at, 1), else_=0)
+    return stmt.order_by(
+        open_first, filed_late_last, m.Dispute.deadline_at.asc().nulls_last(), m.Dispute.id
+    )
 
 
 def list_disputes(
@@ -108,7 +121,7 @@ def list_disputes(
                 merchant=txn.merchant.name if txn else None,
                 amount=txn.amount if txn else None,
                 deadline_at=d.deadline_at, days_to_deadline=days_until(d.deadline_at, now),
-                created_at=d.created_at,
+                filed_late=filed_late(d), created_at=d.created_at,
             )
         )  # fmt: skip
     return s.DisputePage(items=items, total=total, page=page, page_size=page_size)
@@ -160,7 +173,7 @@ def case_detail(session: Session, d: m.Dispute, now: datetime | None = None) -> 
         customer_segment=d.customer.segment, complaint_masked=d.masked_text,
         extracted_fields=d.extracted_fields, reason_code=d.reason_code, confidence=d.confidence,
         deadline_at=d.deadline_at, days_to_deadline=days_until(d.deadline_at, now),
-        created_at=d.created_at, transaction=txn_out,
+        filed_late=filed_late(d), created_at=d.created_at, transaction=txn_out,
         evidence=[s.EvidenceOut.model_validate(e) for e in sorted(d.evidence, key=lambda e: e.id)],
         decision=s.DecisionOut.model_validate(dec) if dec else None,
         reviews=[s.ReviewOut.model_validate(r) for r in sorted(d.reviews, key=lambda r: r.id)],

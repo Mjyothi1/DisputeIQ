@@ -12,7 +12,7 @@ from app.core.config import get_settings
 @lru_cache
 def get_engine() -> Engine:
     """Create the engine lazily so importing the app never requires a live database."""
-    url = get_settings().database_url
+    url = get_settings().resolved_database_url
     if url.startswith("sqlite"):
         # No-Docker mode: a single local file. Background tasks use their own session/thread.
         return create_engine(url, connect_args={"check_same_thread": False})

@@ -1,66 +1,75 @@
-﻿# Run DisputeIQ without Docker (Antigravity / any IDE terminal)
+# Run DisputeIQ locally (no Docker, all free)
 
-Needs only Python 3.11+ and Node 20+. The database is a local SQLite file, nothing to install.
-(SQLite mode skips pgvector similar-case retrieval; everything else is identical.)
+Needs Python 3.11+ and Node 20+. The database is a single SQLite file, `backend/disputeiq.db`.
 
-## 1. Backend (terminal 1)
-```bash
-cd disputeiq
-cp .env.example .env            # Windows PowerShell: Copy-Item .env.example .env
-```
-Open `.env` and swap the database lines: comment out the `postgresql+psycopg://...` DATABASE_URL and
-uncomment `DATABASE_URL=sqlite:///./disputeiq.db`. Then:
-```bash
+## 1. One-time setup
+
+From the project folder (`DisputeIQ`):
+
+**Windows (PowerShell)**
+```powershell
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
+if (!(Test-Path frontend\.env)) { Copy-Item frontend\.env.example frontend\.env }
 cd backend
 python -m venv .venv
-source .venv/bin/activate       # Windows: .venv\Scripts\activate
+.venv\Scripts\activate
 pip install -e ".[dev]"
-python -m app.db.init_db
-# Do not run demo-seed commands against an existing database.
+cd ..\frontend
+npm install
+```
+
+**Mac / Linux**
+```bash
+test -f .env || cp .env.example .env
+test -f frontend/.env || cp frontend/.env.example frontend/.env
+cd backend && python3 -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"
+cd ../frontend && npm install
+```
+
+Open `.env` and paste your free key from https://aistudio.google.com/apikey after `GEMINI_API_KEY=`.
+
+## 2. Start it (every time)
+
+Terminal 1, backend:
+```powershell
+cd backend
+.venv\Scripts\activate          # Mac/Linux: . .venv/bin/activate
 uvicorn app.main:app --reload --port 8000
 ```
-Check http://localhost:8000/health and http://localhost:8000/docs
 
-## 2. Frontend (terminal 2)
-```bash
-cd disputeiq/frontend
-cp .env.example .env            # Windows: Copy-Item .env.example .env
-npm install
+Terminal 2, frontend:
+```powershell
+cd frontend
 npm run dev
 ```
+
 Open http://localhost:5173 and type your name in the header.
 
-## 3. Existing Database, Queue & Evaluation
+## How the data works
 
-The existing project database already contains synthetic customers, transactions, disputes, decisions, and audit records. Start the application and use the queue directly.
+* **Default behavior:** demo bootstrap is disabled. The backend will not automatically populate an empty database.
+* **Optional fresh demo setup:** for a brand-new, empty, isolated demo database only, set `BOOTSTRAP_DEMO_DATA=true` in `.env` before starting the backend. Bootstrap runs in the background using the offline rule engine, without consuming Gemini quota.
+* **Existing database:** leave `BOOTSTRAP_DEMO_DATA=false`. Existing complaints and reviews must be preserved.
+* The backend uses `backend/disputeiq.db`, regardless of the folder from which you start it.
+* Never delete an existing database just to refresh demo data. Back it up and use a separate empty demo database if a fresh dataset is required.
+* Do not run `python -m data_gen.seed --reset` against a database you want to keep; it deletes data.
 
-**Database safety:** Do not run data-generation commands or use `--reset` against the existing database. Seed commands can append duplicate records or delete existing data. Demo-generated analyst reviews are simulated, not real human reviews.
-
-To run the offline benchmark evaluation separately:
-```bash
-python -m eval.run_eval
+## Check Gemini works
+```powershell
+cd backend
+python -m app.agent.cli --ping-llm
 ```
-Or use "Submit complaint" in the UI to submit and analyze a live complaint.
+If the key is missing or the free quota is used up, a submitted complaint still saves; it goes to
+"Needs review" with the error shown in its audit trail (the app never fakes AI output).
 
-## 4. Gemini Flash (default LLM)
-In `.env`: `LLM_PROVIDER=gemini`, `GEMINI_API_KEY=<free-tier key from Google AI Studio>`,
-`GEMINI_MODEL=gemini-3.8-flash` (optional override). The key is backend-only â€” never put it in
-`frontend/.env`. For offline pytest only, set `LLM_PROVIDER=mock` explicitly; API failures never
-silently switch to mock.
-
-Verify: `python -m app.agent.cli --ping-llm`
-
-LLM-written synthetic complaints should only be generated in a separate disposable database. Never re-seed the existing project database.
-Langfuse: `pip install -e ".[langfuse]"` and set `LANGFUSE_ENABLED=true` + keys.
-
-## 5. Tests
-```bash
-cd backend && pytest -q && ruff check . && mypy app
-cd ../frontend && npm test && npm run build
+## Tests
+```powershell
+cd backend; $env:LLM_PROVIDER="mock"; pytest -q
+cd ..\frontend; npm test; npm run build
 ```
 
 ## Troubleshooting
-- Browser shows "Cannot reach the API": backend not running, or `frontend/.env` VITE_API_URL differs from the backend port.
-- Blank queue: check the selected queue filter. Do not run a seed command against the existing database.
-- Port in use: change `--port` and `VITE_API_URL` together.
-- Docker later (optional): `docker compose up --build -d`, then seed via `docker compose exec backend ...`.
+* "Cannot reach the API": the backend is not running, or `frontend/.env` `VITE_API_URL` is not
+  `http://localhost:8000`.
+* Queue empty right after the very first start: wait 20 seconds and refresh, or pick the "All" tab.
+* Port in use: change `--port` and `VITE_API_URL` together.

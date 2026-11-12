@@ -19,6 +19,7 @@ const detail: CaseDetail = {
   confidence: 0.6,
   deadline_at: null,
   days_to_deadline: 10,
+  filed_late: false,
   created_at: "2026-10-01T00:00:00Z",
   transaction: null,
   evidence: [],

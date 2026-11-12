@@ -70,7 +70,9 @@ def compute_metrics(
         as_utc(dl)
         for dl in session.scalars(
             select(m.Dispute.deadline_at).where(
-                m.Dispute.status.in_(list(OPEN_STATUSES)), m.Dispute.deadline_at.is_not(None)
+                m.Dispute.status.in_(list(OPEN_STATUSES)),
+                m.Dispute.deadline_at.is_not(None),
+                m.Dispute.deadline_at >= m.Dispute.created_at,  # filed late: no deadline to miss
             )
         )
         if dl is not None
