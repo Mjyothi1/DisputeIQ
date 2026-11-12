@@ -88,3 +88,11 @@ class Factory:
 @pytest.fixture
 def factory(session: Session) -> Factory:
     return Factory(session)
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter() -> Iterator[None]:
+    from app.api.auth import submit_limiter
+
+    submit_limiter._hits.clear()
+    yield

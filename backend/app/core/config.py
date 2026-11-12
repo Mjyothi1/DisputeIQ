@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_json: bool = False
     cors_origins: str = "http://localhost:5173"
+    # Prototype reviewer auth: "name=key,name2=key2" (keys >= 8 chars). Empty = writes refused.
+    reviewer_accounts: str = ""
+    max_request_bytes: int = Field(default=64_000, gt=0)
 
     database_url: str = "postgresql+psycopg://disputeiq:disputeiq@localhost:5432/disputeiq"
 
@@ -28,7 +31,10 @@ class Settings(BaseSettings):
     llm_provider: Literal["gemini", "anthropic", "openai", "mock"] = "gemini"
     llm_model: str = ""  # optional override; for Gemini prefer GEMINI_MODEL
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.8-flash"  # free-tier Flash; override via GEMINI_MODEL
+    # Single source of truth for the default model. Override with GEMINI_MODEL. The name is NOT
+    # verified against Google's live model list by this repo; confirm it with `python -m
+    # app.agent.cli ping` (or the provider test) before a demo.
+    gemini_model: str = "gemini-3.8-flash"
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     llm_max_retries: int = Field(default=3, ge=0)

@@ -1,5 +1,6 @@
 """Deterministic routing: auto-resolve only clear-cut, low-value, high-confidence refunds."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -25,6 +26,7 @@ def route(
     frequent_disputer: bool = False,
     injection_suspected: bool = False,
     needs_human_flag: bool = False,
+    duplicate_of: Sequence[str] = (),
     config: RulesConfig | None = None,
 ) -> RouteDecision:
     """Return AUTO_RESOLVE only if *every* condition holds; otherwise HUMAN_REVIEW with reasons."""
@@ -34,6 +36,11 @@ def route(
     # Most informative reasons first (what the analyst most needs to know).
     if friendly_fraud:
         why.append("Possible friendly fraud: the transaction was strongly authenticated.")
+    if duplicate_of:
+        why.append(
+            "Transaction already has another dispute (" + ", ".join(duplicate_of) + "); "
+            "possible duplicate or repeat claim - no automatic refund."
+        )
     if injection_suspected:
         why.append("Possible prompt injection in complaint text (ignored).")
     if frequent_disputer:

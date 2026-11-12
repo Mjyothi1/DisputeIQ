@@ -36,7 +36,9 @@ class Scripted:
 
 
 def client(backend: Scripted, sleeps: list[float], retries: int = 3) -> RetryingClient:
-    return RetryingClient(backend, "claude-sonnet-5-5", 88.0, retries, sleep=sleeps.append)
+    return RetryingClient(
+        backend, "claude-sonnet-5-5", 88.0, retries, sleep=sleeps.append, jitter=lambda: 0.0
+    )
 
 
 def call(c: RetryingClient) -> Any:
@@ -113,9 +115,10 @@ def test_classify_gemini_errors_are_explicit() -> None:
             return self.message
 
     assert "API key" in str(classify_gemini_api_error(Fake(401, "UNAUTHENTICATED", "bad key")))
-    assert "quota" in str(
-        classify_gemini_api_error(Fake(429, "RESOURCE_EXHAUSTED", "quota exceeded"))
-    ).lower()
+    daily = Fake(429, "RESOURCE_EXHAUSTED", "quota exceeded: GenerateRequestsPerDayPerProject")
+    assert "quota" in str(classify_gemini_api_error(daily)).lower()
+    per_minute = Fake(429, "RESOURCE_EXHAUSTED", "quota exceeded: PerMinute. retry in 12s")
+    assert classify_gemini_api_error(per_minute) is per_minute  # transient: left for retry
     soft = Fake(429, "TOO_MANY_REQUESTS", "rate limit please retry")
     assert classify_gemini_api_error(soft) is soft
 
@@ -132,3 +135,60 @@ def test_factory_mock_and_missing_keys() -> None:
     with pytest.raises(LLMError):
         client = build_llm_client(Settings(llm_provider="gemini", gemini_api_key=""))
         assert not isinstance(client, MockLLM)
+
+
+# ---- P0.3: rate-limit handling ------------------------------------------------------------
+class ApiErr(Exception):
+    def __init__(self, code: int, status: str, message: str, details: str = "") -> None:
+        super().__init__(message)
+        self.code, self.status, self.message, self.details = code, status, message, details
+
+
+def test_transient_429_resource_exhausted_is_retried_then_succeeds() -> None:
+    sleeps: list[float] = []
+    err = ApiErr(429, "RESOURCE_EXHAUSTED", "Quota exceeded for PerMinute metric")
+    b = Scripted(err, err, RawResponse({"answer": 7}, 1, 1))
+    c = client(b, sleeps)
+    assert call(c).parsed.answer == 7 and b.calls == 3 and sleeps == [1.0, 2.0]
+    assert len(c.drain_events()) == 2 and c.drain_events() == []  # audit notes, then cleared
+
+
+def test_429_honours_retry_after_hint_and_jitter_is_bounded() -> None:
+    sleeps: list[float] = []
+    b = Scripted(
+        ApiErr(429, "RESOURCE_EXHAUSTED", "rate limit", "retryDelay: 9s"),
+        RawResponse({"answer": 1}, 1, 1),
+    )
+    c = RetryingClient(b, "gemini-x", 88.0, 3, sleep=sleeps.append, jitter=lambda: 1.0)
+    call(c)
+    assert sleeps == [pytest.approx(9 * 1.25)]
+
+
+def test_retry_after_beyond_cap_fails_fast_without_sleeping() -> None:
+    sleeps: list[float] = []
+    b = Scripted(ApiErr(429, "RESOURCE_EXHAUSTED", "rate limit", "retryDelay: 300s"))
+    with pytest.raises(LLMError, match="rate limited"):
+        call(client(b, sleeps))
+    assert sleeps == [] and b.calls == 1
+
+
+def test_503_is_retried_and_bounded() -> None:
+    sleeps: list[float] = []
+    b = Scripted(*[ApiErr(503, "UNAVAILABLE", "overloaded")] * 4)
+    with pytest.raises(LLMError, match="after 4 attempts"):
+        call(client(b, sleeps, retries=3))
+    assert b.calls == 4 and len(sleeps) == 3  # never endless
+
+
+def test_hard_daily_quota_is_not_retried() -> None:
+    b = Scripted(ApiErr(429, "RESOURCE_EXHAUSTED", "quota", "GenerateRequestsPerDayPerProject"))
+    with pytest.raises(LLMError, match="quota exhausted"):
+        call(client(b, []))
+    assert b.calls == 1
+
+
+def test_invalid_credentials_are_not_retried() -> None:
+    b = Scripted(ApiErr(403, "PERMISSION_DENIED", "API key not valid"))
+    with pytest.raises(LLMError, match="credentials rejected"):
+        call(client(b, []))
+    assert b.calls == 1
