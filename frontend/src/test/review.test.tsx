@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
@@ -41,11 +41,17 @@ const detail: CaseDetail = {
   audit: [],
 };
 
+let signedIn = "Priya";
+
 function setup(props: Partial<React.ComponentProps<typeof ReviewPanel>> = {}, d = detail) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => new Response(JSON.stringify([]), { status: 200 })),
+    vi.fn(async (url: string) =>
+      new Response(JSON.stringify(String(url).endsWith("/auth/me") ? { name: signedIn } : []), {
+        status: 200,
+      }),
+    ),
   );
   return render(
     <QueryClientProvider client={qc}>
@@ -65,30 +71,36 @@ function setup(props: Partial<React.ComponentProps<typeof ReviewPanel>> = {}, d 
   );
 }
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  signedIn = "Priya";
+});
 
 describe("ReviewPanel", () => {
-  it("asks for an analyst name before any decision is possible", () => {
+  it("blocks decisions until the server has identified the reviewer", () => {
+    // /auth/me has not resolved yet on first render, so there is no identity to attribute to.
     setup();
-    expect(screen.getByRole("alert")).toHaveTextContent(/enter your name/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(/sign in as a reviewer/i);
     expect(screen.getByRole("button", { name: /approve file chargeback/i })).toBeDisabled();
   });
 
-  it("enables approval once an analyst is named, and 'with edits' only after a draft changes", () => {
-    localStorage.setItem("diq-analyst", "Priya");
+  it("enables approval once signed in, and 'with edits' only after a draft changes", async () => {
     const { unmount } = setup();
-    expect(screen.getByRole("button", { name: /approve file chargeback/i })).toBeEnabled();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /approve file chargeback/i })).toBeEnabled(),
+    );
     expect(screen.getByRole("button", { name: /approve with my edits/i })).toBeDisabled();
     unmount();
     setup({ letterChanged: true, letter: "changed" });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /approve with my edits/i })).toBeEnabled(),
+    );
     expect(screen.getByRole("button", { name: /approve file chargeback/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /approve with my edits/i })).toBeEnabled();
   });
 
   it("requires a written reason to override", async () => {
-    localStorage.setItem("diq-analyst", "Priya");
     setup();
-    await userEvent.click(screen.getByRole("button", { name: /override the agent/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /override the agent/i }));
     const confirm = screen.getByRole("button", { name: /confirm override/i });
     expect(confirm).toBeDisabled();
     await userEvent.type(screen.getByLabelText(/why are you overriding/i), "Customer sent proof");

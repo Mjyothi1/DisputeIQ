@@ -1,42 +1,20 @@
 import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { Input } from "@/components/ui/input";
+import { AUTH_EVENT, getReviewerKey, setReviewerKey } from "@/api/auth";
+import { useMe } from "@/api/hooks";
+import { LoginGate } from "@/components/LoginGate";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const THEME_KEY = "diq-theme";
-export const ANALYST_KEY = "diq-analyst";
 
-function safeGet(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
 function safeSet(key: string, value: string) {
   try {
     localStorage.setItem(key, value);
   } catch {
     /* storage unavailable: the preference just won't persist */
   }
-}
-
-export function useAnalystName(): [string, (v: string) => void] {
-  const [name, setName] = useState(() => safeGet(ANALYST_KEY) ?? "");
-  useEffect(() => {
-    const onStorage = () => setName(safeGet(ANALYST_KEY) ?? "");
-    window.addEventListener("diq-analyst-change", onStorage);
-    return () => window.removeEventListener("diq-analyst-change", onStorage);
-  }, []);
-  return [
-    name,
-    (v) => {
-      safeSet(ANALYST_KEY, v);
-      setName(v);
-      window.dispatchEvent(new Event("diq-analyst-change"));
-    },
-  ];
 }
 
 function ThemeToggle() {
@@ -66,7 +44,14 @@ const link = ({ isActive }: { isActive: boolean }) =>
   );
 
 export function Layout() {
-  const [analyst, setAnalyst] = useAnalystName();
+  const [key, setKey] = useState(getReviewerKey);
+  useEffect(() => {
+    const on = () => setKey(getReviewerKey());
+    window.addEventListener(AUTH_EVENT, on);
+    return () => window.removeEventListener(AUTH_EVENT, on);
+  }, []);
+  const me = useMe();
+  if (!key || me.isError) return <LoginGate />;
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-border bg-surface/95 backdrop-blur">
@@ -89,17 +74,12 @@ export function Layout() {
             </NavLink>
           </nav>
           <div className="ml-auto flex items-center gap-2">
-            <label className="sr-only" htmlFor="analyst">
-              Analyst name
-            </label>
-            <Input
-              id="analyst"
-              value={analyst}
-              onChange={(e) => setAnalyst(e.target.value)}
-              placeholder="Your name (analyst)"
-              className="w-44"
-              maxLength={120}
-            />
+            <span className="text-sm text-muted-foreground" data-testid="reviewer-name">
+              {me.data ? `Signed in as ${me.data.name}` : "Signing in…"}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => setReviewerKey("")}>
+              Sign out
+            </Button>
             <ThemeToggle />
           </div>
         </div>

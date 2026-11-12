@@ -149,7 +149,6 @@ export interface PublicConfig {
 }
 
 export interface ReviewRequest {
-  analyst: string;
   action: ReviewAction;
   final_decision?: Recommendation;
   reason_code?: string;

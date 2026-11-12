@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
+import { getReviewerKey } from "./auth";
 import type { CaseDetail, QueueQuery, ReviewRequest } from "./types";
 
 const ACTIVE = new Set(["NEW", "PROCESSING"]);
@@ -64,6 +65,17 @@ export function useRerun(id: number) {
   });
 }
 
+export function useReopen(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (reason: string) => api.reopen(id, reason),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["case", id] });
+      void qc.invalidateQueries({ queryKey: ["queue"] });
+    },
+  });
+}
+
 export function useRecentTxns(customerId: number | null) {
   return useQuery({
     queryKey: ["recent-txns", customerId],
@@ -74,4 +86,9 @@ export function useRecentTxns(customerId: number | null) {
 
 export function useMetrics() {
   return useQuery({ queryKey: ["metrics"], queryFn: api.metrics, refetchInterval: 30_000 });
+}
+
+/** The signed-in reviewer, as the server knows them (never a client-typed name). */
+export function useMe() {
+  return useQuery({ queryKey: ["me", getReviewerKey()], queryFn: api.me, retry: false, staleTime: 60_000 });
 }

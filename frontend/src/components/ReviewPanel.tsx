@@ -1,10 +1,9 @@
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { ApiError } from "@/api/client";
-import { useReasonCodes, useReview } from "@/api/hooks";
+import { useMe, useReasonCodes, useReview } from "@/api/hooks";
 import type { CaseDetail, Recommendation, ReviewAction } from "@/api/types";
 import { RECOMMENDATION_LABEL, RecommendationBadge } from "@/components/badges";
-import { useAnalystName } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Label, Select, Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
@@ -21,7 +20,8 @@ interface Props {
 const DECISIONS: Recommendation[] = ["REFUND", "FILE_CHARGEBACK", "REJECT", "NEED_MORE_INFO"];
 
 export function ReviewPanel({ detail, letter, filing, letterChanged, filingChanged }: Props) {
-  const [analyst] = useAnalystName();
+  const me = useMe();
+  const analyst = me.data?.name ?? "";
   const review = useReview(detail.id);
   const codes = useReasonCodes();
   const toast = useToast();
@@ -77,7 +77,6 @@ export function ReviewPanel({ detail, letter, filing, letterChanged, filingChang
   function submit(action: ReviewAction, extra: Partial<Parameters<typeof review.mutate>[0]> = {}) {
     review.mutate(
       {
-        analyst: analyst.trim(),
         action,
         notes: notes.trim() || undefined,
         edited_letter: letterChanged ? letter : undefined,
@@ -103,7 +102,7 @@ export function ReviewPanel({ detail, letter, filing, letterChanged, filingChang
       </p>
       {nameMissing && (
         <p className="mb-3 rounded-control bg-warn/14 p-2 text-sm text-warn" role="alert">
-          Enter your name in the header so the decision is attributed to you.
+          Sign in as a reviewer so the decision is attributed to you.
         </p>
       )}
 

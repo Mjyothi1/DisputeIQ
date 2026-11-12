@@ -54,7 +54,9 @@ export function SubmitPage() {
       void queryClient.invalidateQueries({ queryKey: ["metrics"] });
       void queryClient.invalidateQueries({ queryKey: ["case", res.dispute_id] });
 
-      toast.success(`Complaint ${caseRef(res.dispute_id)} submitted and analyzed by AI.`);
+      toast.success(
+        `Complaint ${caseRef(res.dispute_id)} submitted (status: ${res.status}). Open the case to see which model analysed it.`,
+      );
       nav(`/cases/${res.dispute_id}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not submit the complaint.");
@@ -175,7 +177,7 @@ export function SubmitPage() {
 
         <Button type="submit" disabled={busy || customerId === null || tooShort}>
           {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-          {busy ? "Analyzing complaint with AI..." : "Submit complaint"}
+          {busy ? "Processing complaint..." : "Submit complaint"}
         </Button>
       </form>
     </div>

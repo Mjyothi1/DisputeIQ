@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowLeft, RefreshCw, ShieldAlert } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ApiError } from "@/api/client";
-import { useCase, useConfig, useRerun } from "@/api/hooks";
+import { useCase, useConfig, useReopen, useRerun } from "@/api/hooks";
 import type { CaseDetail } from "@/api/types";
 import { AuditTimeline } from "@/components/AuditTimeline";
 import { RecommendationBadge, StatusBadge } from "@/components/badges";
@@ -80,6 +80,7 @@ function Body({ detail }: { detail: CaseDetail }) {
   const threshold = config.data?.auto_confidence ?? 0.85;
   const atRisk = config.data?.at_risk_days ?? 7;
   const rerun = useRerun(detail.id);
+  const reopen = useReopen(detail.id);
   const toast = useToast();
   const dec = detail.decision;
   const finished = detail.reviews[detail.reviews.length - 1];
@@ -127,10 +128,26 @@ function Body({ detail }: { detail: CaseDetail }) {
               filedLate={detail.filed_late}
             />
           </div>
-          {!working &&
-            detail.status !== "APPROVED" &&
-            detail.status !== "REJECTED" &&
-            detail.status !== "OVERRIDDEN" && (
+          {detail.status === "AUTO_RESOLVED" && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={reopen.isPending}
+              onClick={() => {
+                const reason = window.prompt(
+                  "Reopen this auto-resolved case for human review. Reason (min 10 characters):",
+                );
+                if (!reason || reason.trim().length < 10) return;
+                reopen.mutate(reason.trim(), {
+                  onSuccess: () => toast.success("Case reopened for human review."),
+                  onError: (e) => toast.error(e.message),
+                });
+              }}
+            >
+              Reopen for review
+            </Button>
+          )}
+          {!working && (detail.status === "NEW" || detail.status === "NEEDS_HUMAN") && (
               <Button
                 variant="outline"
                 size="sm"
