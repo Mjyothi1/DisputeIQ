@@ -2,9 +2,6 @@
 
 from collections.abc import Iterator
 from datetime import datetime, timezone
-
-UTC = timezone.utc  # datetime.UTC was added in Python 3.11; timezone.utc works everywhere
-
 from decimal import Decimal
 from itertools import count
 from typing import Any
@@ -22,6 +19,8 @@ from app.db.enums import (
     MerchantCategory,
     TxnChannel,
 )
+
+UTC = timezone.utc  # datetime.UTC was added in Python 3.11; timezone.utc works everywhere
 
 NOW = datetime(2026, 10, 26, 12, 0, tzinfo=UTC)
 SQLITE_TABLES = [t for t in Base.metadata.sorted_tables if t.name != "case_embeddings"]
@@ -88,3 +87,11 @@ class Factory:
 @pytest.fixture
 def factory(session: Session) -> Factory:
     return Factory(session)
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter() -> Iterator[None]:
+    from app.api.auth import submit_limiter
+
+    submit_limiter._hits.clear()
+    yield

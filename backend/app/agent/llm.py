@@ -10,6 +10,8 @@ Real providers never silently fall back to Mock.
 """
 
 import logging
+import random
+import re
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -42,7 +44,7 @@ PRICING: dict[str, tuple[float, float]] = {
 DEFAULT_PRICE = (3.0, 15.0)
 
 DEFAULT_MODELS = {
-    "gemini": "gemini-3.8-flash",
+    "gemini": Settings.model_fields["gemini_model"].default,  # one source of truth: config.py
     "anthropic": "claude-sonnet-5-5",
     "openai": "gpt-4o-mini",
     "mock": "mock-rules-v1",
@@ -131,7 +133,10 @@ class RetryingClient:
         usd_inr: float,
         max_retries: int = 3,
         sleep: Callable[[float], None] = time.sleep,
+        jitter: Callable[[], float] = random.random,
     ) -> None:
+        self.retry_events: list[str] = []
+        self._jitter = jitter
         self.backend = backend
         self.model = model
         self.usd_inr = usd_inr
@@ -233,113 +238,67 @@ class RetryingClient:
 
         for attempt in range(self.max_retries + 1):
             try:
-                return self.backend.call(
-                    system,
-                    user,
-                    schema,
-                )
-
+                return self.backend.call(system, user, schema)
             except LLMError:
                 raise
-
             except Exception as exc:
                 last = exc
-
-                code = getattr(exc, "code", None)
-
-                if code is None:
-                    code = getattr(exc, "status_code", None)
-
-                status = str(
-                    getattr(exc, "status", "") or ""
-                ).upper()
-
+                kind, retry_after, code = classify_failure(exc)
                 message = str(exc)
-                message_lower = message.lower()
 
-                # Permanent HTTP errors should not be retried.
-                if isinstance(code, int) and (
-                    code in (400, 401, 403, 404)
-                    or (400 <= code < 500 and code != 429)
-                ):
-                    logger.error(
-                        "%s: permanent API error: HTTP %s, status=%s, error=%s",
-                        task,
-                        code,
-                        status,
-                        message[:300],
-                    )
-
+                if kind == "auth":
                     raise LLMError(
-                        f"{task}: permanent API error "
-                        f"(HTTP {code}, {status}): "
-                        f"{message[:300]}"
+                        f"{task}: LLM credentials rejected (HTTP {code}): {message[:200]}"
                     ) from exc
-
-                quota_indicators = (
-                    "resource_exhausted",
-                    "quota exceeded",
-                    "quota_exceeded",
-                    "daily limit",
-                    "daily quota",
-                    "per day",
-                )
-
-                if code == 429 and any(
-                    indicator in message_lower
-                    for indicator in quota_indicators
-                ):
+                if kind == "hard_quota":
                     raise LLMError(
-                        f"{task}: API quota exhausted: "
-                        f"{message[:300]}"
+                        f"{task}: API quota exhausted (not retried): {message[:200]}"
                     ) from exc
-
-                # Retry known temporary errors only.
-                transient = (
-                    code == 429
-                    or (
-                        isinstance(code, int)
-                        and code >= 500
-                    )
-                    or isinstance(
-                        exc,
-                        (TimeoutError, ConnectionError),
-                    )
-                )
-
-                if not transient:
+                if kind == "permanent":
                     raise LLMError(
-                        f"{task}: non-retriable LLM error: "
-                        f"{message[:300]}"
+                        f"{task}: permanent API error (HTTP {code}): {message[:200]}"
                     ) from exc
 
                 if attempt >= self.max_retries:
                     break
 
-                delay = min(
-                    2.0 ** attempt,
-                    20.0,
-                )
+                delay = self._delay(attempt, retry_after)
+                if delay is None:
+                    raise LLMError(
+                        f"{task}: rate limited; provider asked to wait {retry_after:.0f}s "
+                        f"(> {MAX_RETRY_WAIT_S:.0f}s cap), not waiting: {message[:200]}"
+                    ) from exc
 
+                self.retry_events.append(
+                    f"{task}: transient error (HTTP {code}); retry {attempt + 1}/"
+                    f"{self.max_retries} in {delay:.1f}s"
+                    + (f" (provider retry-after {retry_after:.0f}s)" if retry_after else "")
+                )
                 logger.warning(
                     "Transient LLM error; retrying",
-                    extra={
-                        "task": task,
-                        "attempt": attempt + 1,
-                        "delay_s": delay,
-                        "http_code": code,
-                        "status": status,
-                        "error": message[:300],
-                    },
+                    extra={"task": task, "attempt": attempt + 1, "delay_s": delay,
+                           "http_code": code, "error": message[:300]},
                 )
-
                 self._sleep(delay)
 
         raise LLMError(
-            f"{task}: LLM call failed after "
-            f"{self.max_retries + 1} attempts: "
-            f"{str(last)[:300]}"
+            f"{task}: LLM call failed after {self.max_retries + 1} attempts "
+            f"(transient errors persisted): {str(last)[:300]}"
         ) from last
+
+    def _delay(self, attempt: int, retry_after: float | None) -> float | None:
+        """Backoff seconds (exponential + jitter, honouring retry-after); None = too long."""
+        base = min(2.0**attempt, 20.0)
+        if retry_after is not None:
+            if retry_after > MAX_RETRY_WAIT_S:
+                return None
+            base = max(base, retry_after)
+        return base * (1.0 + self._jitter() * 0.25)
+
+    def drain_events(self) -> list[str]:
+        """Retry notes since the last call (the pipeline writes them to the audit trail)."""
+        events, self.retry_events = self.retry_events, []
+        return events
 
 
 def _gemini_usage(resp: Any) -> tuple[int, int]:
@@ -362,65 +321,85 @@ def _gemini_usage(resp: Any) -> tuple[int, int]:
     return tokens_in, tokens_out
 
 
-def classify_gemini_api_error(
-    exc: BaseException,
-) -> Exception:
-    """Classify Gemini API errors."""
+MAX_RETRY_WAIT_S = 30.0
+_HARD_QUOTA_MARKERS = ("perday", "per day", "daily", "limit: 0", "limit:0", "billing")
+_AUTH_MARKERS = ("api key", "api_key_invalid", "permission_denied", "unauthenticated")
 
-    code = getattr(exc, "code", None)
 
-    status = str(
-        getattr(exc, "status", None) or ""
-    ).upper()
+def _error_blob(exc: BaseException) -> str:
+    parts = [
+        str(getattr(exc, "status", "") or ""),
+        str(getattr(exc, "message", "") or ""),
+        str(exc),
+        str(getattr(exc, "details", "") or ""),
+    ]
+    return " ".join(parts).lower()
 
-    message = str(
-        getattr(exc, "message", None) or exc
-    )
 
-    blob = f"{status} {message}".lower()
+def _error_code(exc: BaseException) -> int | None:
+    for attr in ("code", "status_code"):
+        v = getattr(exc, attr, None)
+        if isinstance(v, int):
+            return v
+    return None
 
-    if (
-        code in (401, 403)
-        or "api key" in blob
-        or "permission" in blob
-        or "unauthenticated" in blob
-    ):
+
+def _retry_after_seconds(exc: BaseException, blob: str) -> float | None:
+    """Provider hint: ``retryDelay: 34s`` / "retry in 34.5s" / a Retry-After header."""
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    if headers:
+        try:
+            v = headers.get("retry-after")
+            if v is not None:
+                return float(v)
+        except (TypeError, ValueError):
+            pass
+    m = re.search(r"retry(?:delay)?\W{1,6}(?:in\s+)?(\d+(?:\.\d+)?)\s*s", blob)
+    return float(m.group(1)) if m else None
+
+
+def classify_failure(exc: BaseException) -> tuple[str, float | None, int | None]:
+    """Return ``(kind, retry_after_s, http_code)``.
+
+    kind: ``transient`` (retry, bounded) | ``hard_quota`` | ``auth`` | ``permanent``.
+    A 429 / RESOURCE_EXHAUSTED is transient unless it names a daily/billing quota.
+    """
+    code = _error_code(exc)
+    blob = _error_blob(exc)
+    if code in (401, 403) or any(k in blob for k in _AUTH_MARKERS):
+        return "auth", None, code
+    if code == 429 or "resource_exhausted" in blob:
+        if any(k in blob for k in _HARD_QUOTA_MARKERS):
+            return "hard_quota", None, code
+        return "transient", _retry_after_seconds(exc, blob), code
+    if isinstance(code, int) and code >= 500:
+        return "transient", _retry_after_seconds(exc, blob), code
+    if code is None and ("unavailable" in blob or "deadline_exceeded" in blob):
+        return "transient", None, code
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return "transient", None, code
+    if isinstance(code, int) and 400 <= code < 500:
+        return "permanent", None, code
+    return "permanent", None, code
+
+
+def classify_gemini_api_error(exc: BaseException) -> Exception:
+    """Map a Gemini SDK error: hard failures become :class:`LLMError`; transient ones pass
+    through unchanged so :class:`RetryingClient` can retry them."""
+    kind, _, code = classify_failure(exc)
+    if kind == "auth":
         return LLMError(
             "Gemini API key is missing, invalid, or not authorised. "
             "Check GEMINI_API_KEY in the backend environment."
         )
-
-    if (
-        "resource_exhausted" in blob
-        or "quota" in blob
-    ):
+    if kind == "hard_quota":
         return LLMError(
-            "Gemini API quota exhausted or rate limit reached. "
-            "Check your Google AI Studio quota. "
+            "Gemini daily/billing quota exhausted. Check your Google AI Studio quota. "
             "No mock fallback was used."
         )
-
-    if code == 429 and ("too_many_requests" in blob or "rate limit" in blob):
-        return exc
-
-    if code == 400 and (
-        "billing" in blob or "paid" in blob
-    ):
-        return LLMError(
-            "Gemini rejected the request because of billing "
-            "or a paid feature. Check model access."
-        )
-
-    if isinstance(code, int) and code >= 500:
-        # Temporary server-side error. RetryingClient handles it.
-        return exc
-
-    if isinstance(code, int) and code >= 400:
-        return LLMError(
-            f"Gemini API error {code}: {message[:300]}"
-        )
-
-    return exc
+    if kind == "permanent":
+        return LLMError(f"Gemini API error {code}: {str(exc)[:300]}")
+    return exc  # type: ignore[return-value]
 
 
 class GeminiBackend:
@@ -481,13 +460,15 @@ class GeminiBackend:
         except genai_errors.APIError as exc:
             mapped = classify_gemini_api_error(exc)
 
-            logger.error(
+            logger.warning(
                 "Gemini API request failed: HTTP %s, status=%s, error=%s",
                 getattr(exc, "code", None),
                 getattr(exc, "status", None),
                 str(exc)[:300],
             )
 
+            if mapped is exc:
+                raise
             raise mapped from exc
 
         except TimeoutError as exc:

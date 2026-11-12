@@ -12,13 +12,14 @@ import json
 import logging
 import re
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.agent import documents as docs
@@ -47,6 +48,7 @@ from app.rules.policy import (
 from app.rules.routing import RouteDecision, route
 from app.rules.types import Blocker, EvidenceItem, RouteTarget
 from app.services.audit import AuditLogger, Telemetry
+from app.services.duplicates import dispute_ref, other_disputes, transaction_guard
 from app.services.embeddings import build_embedder
 from app.services.injection import detect_injection
 from app.services.pii import mask_pii
@@ -57,6 +59,7 @@ from app.tools.matching import ClaimFacts, match_transaction
 
 logger = logging.getLogger(__name__)
 TOP_K_SIMILAR = 3
+RUNNABLE_STATUSES = (DisputeStatus.NEW, DisputeStatus.NEEDS_HUMAN)
 
 
 _MONTHS = {
@@ -76,67 +79,117 @@ _MONTHS = {
 
 
 
+_MONTH_NAMES = (
+    "January|February|March|April|May|June|July|August|September|October|November|December|"
+    "Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept|Sep|Oct|Nov|Dec"
+)
+_NOT_MERCHANTS = {
+    "home", "work", "office", "night", "noon", "midnight", "least", "most", "once", "first",
+    "last", "all", "the", "that", "this", "my", "our", "your", "a", "an", "time", "times",
+    "present", "hand", "home.", "school", "college", "airport", "station",
+}
+_UNIT_AFTER = re.compile(
+    r"\s*(?:times?|x|attempts?|days?|hours?|hrs?|mins?|minutes?|weeks?|months?|years?|rs|rupees)\b",
+    re.IGNORECASE,
+)
+
+
+def _recover_amount(text: str) -> float | None:
+    """An amount only when it carries an explicit currency marker directly beside it."""
+    for m in re.finditer(r"(\d[\d,]*(?:\.\d{1,2})?)", text):
+        before = text[max(0, m.start() - 6): m.start()]
+        after = text[m.end(): m.end() + 10]
+        if (
+            re.search(r"(?:\u20b9|\bINR|\bRs\.?)\s*$", before, re.IGNORECASE)
+            or re.match(r"\s*(?:rupees|rs\b|inr\b|/-)", after, re.IGNORECASE)
+        ):
+            try:
+                return float(m.group(1).replace(",", ""))
+            except ValueError:
+                return None
+    return None
+
+
+def _recover_date(text: str) -> tuple[int, int, int | None] | None:
+    """(day, month, year|None) from an explicit "22 Oct" / "22nd October 2026" / "22/10[/2026]".
+
+    Times ("10 pm"), counts ("2-3 times") and ranges are never dates. A year is only returned
+    when the complaint states a four-digit one - it is never inferred.
+    """
+    word = re.search(
+        rf"(?<![\d/.-])(?P<day>\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?(?P<month>{_MONTH_NAMES})\b"
+        r"(?:\.|,)?(?:\s+(?P<year>\d{4})\b)?",
+        text, re.IGNORECASE,
+    )
+    if word and (word.group("month").lower() != "may" or word.group("month")[0] == "M"):
+        day, month = int(word.group("day")), _MONTHS[word.group("month").lower()]
+        if 1 <= day <= 31:
+            year = word.group("year")
+            return day, month, int(year) if year else None
+    for m in re.finditer(
+        r"(?<![\d/.:-])(?P<day>\d{1,2})(?P<sep>[/-])(?P<month>\d{1,2})(?:(?P=sep)(?P<year>\d{2}|\d{4}))?(?![\d/:])",
+        text,
+    ):
+        year = m.group("year")
+        # "2-3 times" / "5-6 hours": a hyphenated pair is a range unless a year follows.
+        if m.group("sep") == "-" and not year:
+            continue
+        if _UNIT_AFTER.match(text, m.end()):
+            continue
+        day, month = int(m.group("day")), int(m.group("month"))
+        if 1 <= day <= 31 and 1 <= month <= 12:
+            return day, month, int(year) if year and len(year) == 4 else None
+    return None
+
+
+def _recover_merchant(text: str) -> str | None:
+    """A merchant/place only from "at <Capitalised Name>" - never "at home" or "at 10 pm"."""
+    for m in re.finditer(
+        r"\b[Aa]t\s+([A-Z][A-Za-z0-9&'()/.-]*(?:\s+[A-Za-z0-9&'()/.-]+){0,5}?)"
+        r"(?=\s+(?:on|at|for|but|and|when|where|which|in)\b|[,.;\n]|$)",
+        text,
+    ):
+        cand = m.group(1).strip().rstrip(".")
+        first = cand.split()[0].lower().rstrip(".")
+        if first in _NOT_MERCHANTS or len(cand) < 3:
+            continue
+        return cand
+    return None
+
+
 def _recover_extraction_facts(text: str, extraction: ClaimExtraction) -> ClaimExtraction:
-    """Recover explicit facts omitted by the LLM without overwriting valid values."""
+    """Fill facts the LLM left empty from *explicit, unambiguous* text; never overwrite values.
+
+    Returns null for anything uncertain: precision matters more than recall because the matcher
+    and the human reviewer handle missing facts safely, while a wrong fact misleads both.
+    """
     recovered: dict[str, Any] = {}
 
     if extraction.claimed_amount is None:
-        for match in re.finditer(r"(\d[\d,]*(?:\.\d{1,2})?)", text):
-            prefix = text[max(0, match.start() - 12):match.start()]
-            has_currency = (
-                chr(8377) in prefix
-                or re.search(r"\bINR\b|\bRs\.?\s*$", prefix, re.IGNORECASE) is not None
-            )
-            if has_currency:
-                recovered["claimed_amount"] = float(match.group(1).replace(",", ""))
-                break
+        amount = _recover_amount(text)
+        if amount is not None:
+            recovered["claimed_amount"] = amount
 
     if extraction.approx_day is None or extraction.approx_month is None:
-        months = {
-            "jan": 1, "january": 1, "feb": 2, "february": 2,
-            "mar": 3, "march": 3, "apr": 4, "april": 4,
-            "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
-            "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9,
-            "oct": 10, "october": 10, "nov": 11, "november": 11,
-            "dec": 12, "december": 12,
-        }
-        word_date = re.search(
-            r"\b(?P<day>\d{1,2})\s+"
-            r"(?P<month>January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)"
-            r"(?:,?\s+(?P<year>\d{4}))?\b",
-            text, re.IGNORECASE,
-        )
-        numeric_date = re.search(
-            r"\b(?P<day>\d{1,2})[/-](?P<month>\d{1,2})(?:[/-](?P<year>\d{4}))?\b",
-            text,
-        )
-
-        day = month = year = None
-        if word_date:
-            day = int(word_date.group("day"))
-            month = months[word_date.group("month").lower()]
-            year = word_date.group("year")
-        elif numeric_date:
-            day = int(numeric_date.group("day"))
-            month = int(numeric_date.group("month"))
-            year = numeric_date.group("year")
-
-        if day is not None and month is not None and 1 <= day <= 31 and 1 <= month <= 12:
-            if extraction.approx_day is None:
-                recovered["approx_day"] = day
-            if extraction.approx_month is None:
-                recovered["approx_month"] = month
-            if extraction.approx_year is None and year:
-                recovered["approx_year"] = int(year)
+        date = _recover_date(text)
+        if date is not None:
+            day, month, year = date
+            # Never mix an LLM day/month with a regex one that disagrees.
+            consistent = (extraction.approx_day in (None, day)) and (
+                extraction.approx_month in (None, month)
+            )
+            if consistent:
+                if extraction.approx_day is None:
+                    recovered["approx_day"] = day
+                if extraction.approx_month is None:
+                    recovered["approx_month"] = month
+                if extraction.approx_year is None and year:
+                    recovered["approx_year"] = year
 
     if extraction.merchant_hint is None:
-        merchant = re.search(
-            r"\bat\s+([A-Za-z0-9][A-Za-z0-9 &'()/.-]{1,79}?)"
-            r"(?=\s+on\b|[,.;\n]|$)",
-            text, re.IGNORECASE,
-        )
+        merchant = _recover_merchant(text)
         if merchant:
-            recovered["merchant_hint"] = merchant.group(1).strip()
+            recovered["merchant_hint"] = merchant
 
     return extraction.model_copy(update=recovered) if recovered else extraction
 
@@ -252,6 +305,15 @@ class Pipeline:
         self._tout += res.tokens_out
         self._latency += res.latency_ms
 
+    def _structured(self, state: AgentState, **kw: Any) -> LLMResult[Any]:
+        """LLM call that always records retry attempts (and failures) in the audit trail."""
+        try:
+            return self.llm.structured(**kw)
+        finally:
+            drain = getattr(self.llm, "drain_events", None)
+            for note in drain() if callable(drain) else []:
+                self._audit(state).log("llm_retry", AuditActor.TOOL, kw.get("task"), note)
+
     def _dispute(self, state: AgentState) -> models.Dispute:
         d = self.session.get(models.Dispute, state["dispute_id"])
         assert d is not None
@@ -277,7 +339,7 @@ class Pipeline:
         flags = detect_injection(text)
         update: dict[str, Any] = {}
         try:
-            res = self.llm.structured(
+            res = self._structured(state, 
                 task="extract_claim",
                 system=prompts.EXTRACT_SYSTEM,
                 user=prompts.extract_user(text, d.channel.value),
@@ -354,7 +416,7 @@ class Pipeline:
         ev_d = evidence_dicts(ev)
         update: dict[str, Any] = {"similar": similar}
         try:
-            res = self.llm.structured(
+            res = self._structured(state, 
                 task="classify_reason",
                 system=prompts.CLASSIFY_SYSTEM,
                 user=prompts.classify_user(
@@ -471,7 +533,7 @@ class Pipeline:
     ) -> tuple[str, list[str], LLMResult[RationaleOutput] | None]:
         known = {e["check_name"] for e in decision["evidence"]}
         try:
-            res = self.llm.structured(
+            res = self._structured(state, 
                 task="write_rationale",
                 system=prompts.RATIONALE_SYSTEM,
                 user=prompts.rationale_user(decision),
@@ -521,7 +583,7 @@ class Pipeline:
         llm_body: str | None
         llm_narr: str | None
         try:
-            res = self.llm.structured(
+            res = self._structured(state, 
                 task="draft_documents",
                 system=prompts.DRAFT_SYSTEM,
                 user=prompts.draft_user(payload, want_filing),
@@ -555,30 +617,45 @@ class Pipeline:
     def route_case(self, state: AgentState) -> dict[str, Any]:
         d, el, rec = self._dispute(state), state["eligibility"], state["recommendation"]
         txn = self.session.get(models.Transaction, state["txn_id"]) if state.get("txn_id") else None
-        policy = state.get("policy")
-        rd = route(
-            rec, state["confidence"], txn.amount if txn else None, state.get("reason_code"), el,
-            friendly_fraud=state.get("friendly_fraud", False),
-            frequent_disputer=bool(policy and policy.frequent_disputer),
-            injection_suspected=state["extraction"].injection_suspected,
-            needs_human_flag=bool(state.get("needs_human_reasons")),
-            config=self.cfg,
-        )  # fmt: skip
-        auto = rd.target is RouteTarget.AUTO_RESOLVE
-        d.status = DisputeStatus.AUTO_RESOLVED if auto else DisputeStatus.NEEDS_HUMAN
-        self.session.add(
-            models.Decision(
-                dispute_id=d.id, recommendation=rec, rationale=state["rationale"],
-                confidence=state["confidence"], friendly_fraud_flag=state.get("friendly_fraud", False),
-                drafted_customer_letter=state["letter"], drafted_chargeback_filing=state.get("filing"),
-                model=self.llm.model, prompt_version=prompts.PROMPT_VERSION,
-            )
-        )  # fmt: skip
-        reasons = rd.reasons + list(state.get("needs_human_reasons", []))
-        self._audit(state).log(
-            "route", AuditActor.TOOL, f"{rec.value} @ {state['confidence']:.2f}",
-            f"{d.status.value}" + (f" because: {' | '.join(reasons)}" if reasons else ": all auto-resolve conditions met"),
-        )  # fmt: skip
+        guard = transaction_guard(self.session, txn.id) if txn else nullcontext()
+        with guard:  # serialises check -> decision -> commit per transaction (see duplicates.py)
+            dups = (
+                [f"{dispute_ref(o.id)} {o.status.value}"
+                 for o in other_disputes(self.session, d.id, txn.id)]
+                if txn else []
+            )  # fmt: skip
+            policy = state.get("policy")
+            rd = route(
+                rec, state["confidence"], txn.amount if txn else None, state.get("reason_code"), el,
+                friendly_fraud=state.get("friendly_fraud", False),
+                frequent_disputer=bool(policy and policy.frequent_disputer),
+                injection_suspected=state["extraction"].injection_suspected,
+                needs_human_flag=bool(state.get("needs_human_reasons")),
+                duplicate_of=dups,
+                config=self.cfg,
+            )  # fmt: skip
+            auto = rd.target is RouteTarget.AUTO_RESOLVE
+            d.status = DisputeStatus.AUTO_RESOLVED if auto else DisputeStatus.NEEDS_HUMAN
+            self.session.add(
+                models.Decision(
+                    dispute_id=d.id, recommendation=rec, rationale=state["rationale"],
+                    confidence=state["confidence"], friendly_fraud_flag=state.get("friendly_fraud", False),
+                    drafted_customer_letter=state["letter"], drafted_chargeback_filing=state.get("filing"),
+                    model=self.llm.model, prompt_version=prompts.PROMPT_VERSION,
+                )
+            )  # fmt: skip
+            reasons = rd.reasons + list(state.get("needs_human_reasons", []))
+            if dups:
+                self._audit(state).log(
+                    "duplicate_dispute_check", AuditActor.TOOL, f"Transaction {txn.id}",  # type: ignore[union-attr]
+                    "Other dispute(s) on this transaction: " + ", ".join(dups)
+                    + ". Automatic resolution blocked; routed to human review.",
+                )
+            self._audit(state).log(
+                "route", AuditActor.TOOL, f"{rec.value} @ {state['confidence']:.2f}",
+                f"{d.status.value}" + (f" because: {' | '.join(reasons)}" if reasons else ": all auto-resolve conditions met"),
+            )  # fmt: skip
+            self.session.commit()  # inside the guard so the next case sees this decision
         return {"route_decision": rd}
 
     # ---- entry point ----------------------------------------------------------------------
@@ -589,10 +666,26 @@ class Pipeline:
         d = self.session.get(models.Dispute, dispute_id)
         if d is None:
             raise LookupError(f"dispute {dispute_id} not found")
+        # Atomic claim: only NEW / NEEDS_HUMAN cases are (re)processed, and only one worker wins.
+        # Terminal cases (AUTO_RESOLVED, reviewed) are never silently reprocessed.
+        claimed = self.session.execute(
+            update(models.Dispute)
+            .where(
+                models.Dispute.id == dispute_id,
+                models.Dispute.status.in_(RUNNABLE_STATUSES),
+            )
+            .values(status=DisputeStatus.PROCESSING)
+        ).rowcount  # type: ignore[attr-defined]
+        if not claimed:
+            self.session.rollback()
+            self.session.refresh(d)
+            return ProcessResult(
+                dispute_id, d.status, error=f"Dispute is {d.status.value}; not processed."
+            )
+        self.session.expire(d)
         self.session.execute(
             delete(models.Evidence).where(models.Evidence.dispute_id == dispute_id)
         )
-        d.status = DisputeStatus.PROCESSING
         self.session.flush()
         init: AgentState = {
             "dispute_id": dispute_id,

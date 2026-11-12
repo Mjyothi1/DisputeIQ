@@ -11,6 +11,7 @@ import type {
   ReasonCode,
   ReviewRequest,
 } from "./types";
+import { getReviewerKey, setReviewerKey } from "./auth";
 
 export const API_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
@@ -39,9 +40,13 @@ function describe(detail: unknown): string {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
+    const key = getReviewerKey();
     res = await fetch(`${API_URL}${path}`, {
-      headers: { "content-type": "application/json" },
       ...init,
+      headers: {
+        "content-type": "application/json",
+        ...(key ? { authorization: `Bearer ${key}` } : {}),
+      },
     });
   } catch {
     throw new ApiError(0, `Cannot reach the API at ${API_URL}. Check that the backend is running.`);
@@ -53,6 +58,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* keep statusText */
     }
+    if (res.status === 401 && getReviewerKey()) setReviewerKey(""); // key rejected: sign out
     throw new ApiError(res.status, describe(detail));
   }
   return (await res.json()) as T;
@@ -79,6 +85,9 @@ export const api = {
   process: (id: number) => request<Accepted>(`/disputes/${id}/process`, { method: "POST" }),
   review: (id: number, body: ReviewRequest) =>
     request<CaseDetail>(`/disputes/${id}/review`, { method: "POST", body: JSON.stringify(body) }),
+  me: () => request<{ name: string }>("/auth/me"),
+  reopen: (id: number, reason: string) =>
+    request<CaseDetail>(`/disputes/${id}/reopen`, { method: "POST", body: JSON.stringify({ reason }) }),
   customers: (q: string) => request<Customer[]>(`/customers?limit=50&q=${encodeURIComponent(q)}`),
   recentTxns: (id: number) => request<RecentTxn[]>(`/customers/${id}/transactions?limit=8`),
   reasonCodes: () => request<ReasonCode[]>("/reason-codes"),

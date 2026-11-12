@@ -1,9 +1,8 @@
-﻿"""API integration tests: real FastAPI app + real pipeline (offline mock LLM) on a seeded SQLite DB."""
+"""API integration tests: real FastAPI app + real pipeline (offline mock LLM) on a seeded SQLite DB."""
 
 import shutil
 from collections.abc import Callable, Iterator
 from datetime import datetime, timezone
-UTC = timezone.utc  # Python 3.11+ compat
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.agent.mock_llm import MockLLM
 from app.agent.pipeline import Pipeline
 from app.api.deps import get_embedder, get_runner
+from app.core.config import Settings, get_settings
 from app.db import models as m
 from app.db.base import Base
 from app.db.enums import DisputeStatus
@@ -24,7 +24,10 @@ from app.services.retrieval import NullRetriever
 from data_gen.generate import generate
 from tests.conftest import SQLITE_TABLES
 
+UTC = timezone.utc  # Python 3.11+ compat
+
 ANCHOR = datetime(2026, 10, 26, 12, tzinfo=UTC)
+TEST_KEY = "test-reviewer-key-123"
 
 
 @pytest.fixture(scope="session")
@@ -42,7 +45,7 @@ class Env:
     def __init__(self, engine: Engine) -> None:
         self.engine = engine
         self.calls: list[int] = []
-        self.client = TestClient(app)
+        self.client = TestClient(app, headers={"Authorization": f"Bearer {TEST_KEY}"})
 
     def session(self) -> Session:
         return Session(self.engine)
@@ -90,6 +93,9 @@ def env(template_db: Path, tmp_path: Path) -> Iterator[Env]:
         return run
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None, reviewer_accounts=f"asha={TEST_KEY}"
+    )
     app.dependency_overrides[get_runner] = recording_runner
     app.dependency_overrides[get_embedder] = lambda: None
     yield e
@@ -315,7 +321,7 @@ def test_queue_pagination_and_validation(env: Env) -> None:
 
 # ---- review ---------------------------------------------------------------------------------
 def review(env: Env, did: int, **body: Any) -> Any:
-    return env.client.post(f"/disputes/{did}/review", json={"analyst": "priya", **body})
+    return env.client.post(f"/disputes/{did}/review", json={"analyst": "mallory-spoof", **body})
 
 
 def test_review_requires_processed_case(env: Env) -> None:
@@ -329,12 +335,12 @@ def test_approve(env: Env, processed: dict[str, int]) -> None:
     assert r.status_code == 200
     c = r.json()
     assert c["status"] == "APPROVED" and c["can_review"] is False
-    assert c["reviews"][0]["final_decision"] == "REJECT" and c["reviews"][0]["analyst"] == "priya"
+    assert c["reviews"][0]["final_decision"] == "REJECT" and c["reviews"][0]["analyst"] == "asha"
     last = c["audit"][-1]
     assert (
         last["step"] == "human_approve"
         and last["actor"] == "HUMAN"
-        and "priya" in last["output_summary"]
+        and "asha" in last["output_summary"]
     )
     assert review(env, processed["ff"], action="APPROVE").status_code == 409  # already decided
 
@@ -418,12 +424,6 @@ def test_cannot_rerun_after_human_decision(env: Env, processed: dict[str, int]) 
 
 
 def test_review_validation_errors_are_422(env: Env, processed: dict[str, int]) -> None:
-    assert (
-        env.client.post(
-            f"/disputes/{processed['ff']}/review", json={"action": "APPROVE"}
-        ).status_code
-        == 422
-    )
     assert review(env, processed["ff"], action="DELETE").status_code == 422
 
 

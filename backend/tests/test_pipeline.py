@@ -1,8 +1,7 @@
-﻿"""End-to-end pipeline tests on a seeded in-memory database (offline mock LLM)."""
+"""End-to-end pipeline tests on a seeded in-memory database (offline mock LLM)."""
 
 from collections.abc import Iterator
 from datetime import datetime, timezone
-UTC = timezone.utc  # Python 3.11+ compat
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +20,8 @@ from app.services.pii import mask_pii
 from app.services.retrieval import InMemoryRetriever
 from data_gen.generate import generate
 from tests.conftest import SQLITE_TABLES
+
+UTC = timezone.utc  # Python 3.11+ compat
 
 NODES = [
     "mask_pii", "intake_extract", "match_transaction", "run_evidence_checks",
@@ -157,11 +158,19 @@ def test_all_prompt_injections_flagged_and_never_auto_resolved(
         assert r.recommendation.value == gt["recommendation"], (d.raw_text, r)  # type: ignore[union-attr]
 
 
+def reopen_for_test(s: Session, *ds: models.Dispute) -> None:
+    """Terminal cases are never re-run silently; tests simulate the analyst reopening them."""
+    for d in ds:
+        d.status = DisputeStatus.NEEDS_HUMAN
+    s.commit()
+
+
 def test_rerun_replaces_evidence_but_keeps_history(world: tuple[Session, Pipeline]) -> None:
     s, p = world
     d = pick(s, "atm_failure")
     p.run(d.id)
     before = len(events(s, d.id))
+    reopen_for_test(s, d)
     p.run(d.id)
     s.refresh(d)
     assert len(d.evidence) == 7 and len(d.decisions) >= 2 and len(events(s, d.id)) > before
@@ -186,6 +195,7 @@ def test_llm_outage_degrades_to_human_review_without_crashing(
 ) -> None:
     s, _ = world
     d = pick(s, "duplicate", should_route_human=False)
+    reopen_for_test(s, d)
     r = Pipeline(s, FailingLLM()).run(d.id)
     assert r.error is None and r.status is DisputeStatus.NEEDS_HUMAN
     assert r.recommendation is Recommendation.NEED_MORE_INFO
@@ -195,6 +205,7 @@ def test_llm_outage_degrades_to_human_review_without_crashing(
 def test_unexpected_crash_is_contained_and_audited(world: tuple[Session, Pipeline]) -> None:
     s, _ = world
     d = pick(s, "duplicate", should_route_human=False)
+    reopen_for_test(s, d)
     r = Pipeline(s, CrashingLLM()).run(d.id)
     assert r.status is DisputeStatus.NEEDS_HUMAN and r.error == "boom"
     assert events(s, d.id)[-1].step == "pipeline_error"
@@ -227,6 +238,7 @@ def test_safety_invariants_over_whole_dev_set(world: tuple[Session, Pipeline]) -
     auto-resolve a wrong recommendation, and keep reason-code accuracy sensible."""
     s, p = world
     dev = list(s.scalars(select(models.Dispute).where(models.Dispute.split == DataSplit.DEV)))
+    reopen_for_test(s, *dev)
     results: list[tuple[models.Dispute, ProcessResult]] = [(d, p.run(d.id)) for d in dev]
     auto = [(d, r) for d, r in results if r.status is DisputeStatus.AUTO_RESOLVED]
     assert auto, "expected some auto-resolved cases"

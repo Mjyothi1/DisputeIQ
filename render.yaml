@@ -15,12 +15,14 @@ services:
         sync: false
       - key: APP_ENV
         value: production
+      - key: REVIEWER_ACCOUNTS    # "name=key,..." prototype reviewer keys; without it the API refuses case access
+        sync: false
       - key: LLM_PROVIDER
         value: gemini            # default: Google Gemini Flash free tier (never silently falls back to mock)
       - key: GEMINI_API_KEY
         sync: false              # Google AI Studio free-tier key — set in the Render dashboard
       - key: GEMINI_MODEL
-        value: gemini-3.8-flash  # free-tier Flash; change only if Google renames the free model
+        value: gemini-3.8-flash  # MUST equal the default in backend/app/core/config.py (a test enforces it). The live Render dashboard value is not verifiable from this repo.
       - key: LLM_MODEL
         sync: false              # optional override of GEMINI_MODEL
       - key: ANTHROPIC_API_KEY

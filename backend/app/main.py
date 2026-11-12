@@ -50,8 +50,15 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
         allow_methods=["*"],
-        allow_headers=["*"],
+        allow_headers=["Authorization", "Content-Type"],
     )
+    @app.middleware("http")
+    async def limit_body(request: Request, call_next):  # type: ignore[no-untyped-def]
+        length = request.headers.get("content-length")
+        if length and length.isdigit() and int(length) > settings.max_request_bytes:
+            return JSONResponse({"detail": "Request body too large"}, status_code=413)
+        return await call_next(request)
+
     app.include_router(health.router)
     app.include_router(disputes.router)
     app.include_router(meta.router)

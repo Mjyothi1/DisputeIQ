@@ -7,14 +7,13 @@ import argparse
 import json
 from datetime import datetime, timezone
 
-UTC = timezone.utc  # datetime.UTC was added in Python 3.11; timezone.utc works everywhere
-
-
 from sqlalchemy import delete, inspect
 
 from app.db import models
 from app.db.session import get_session_factory
 from data_gen.generate import generate
+
+UTC = timezone.utc  # datetime.UTC was added in Python 3.11; timezone.utc works everywhere
 
 TABLES_CHILD_FIRST = [
     models.CaseEmbedding, models.AuditEvent, models.Review, models.Decision, models.Evidence,

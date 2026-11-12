@@ -30,7 +30,11 @@ class ReviewError(Exception):
 
 
 def apply_review(
-    session: Session, dispute: m.Dispute, payload: ReviewIn, embedder: Embedder | None = None
+    session: Session,
+    dispute: m.Dispute,
+    payload: ReviewIn,
+    analyst: str,
+    embedder: Embedder | None = None,
 ) -> m.Review:
     """Record a human decision. Raises :class:`ReviewError` for invalid state or input."""
     decision = latest_decision(session, dispute.id)
@@ -59,7 +63,7 @@ def apply_review(
         dispute.reason_code = payload.reason_code
 
     review = m.Review(
-        dispute_id=dispute.id, analyst=payload.analyst, action=payload.action, final_decision=final,
+        dispute_id=dispute.id, analyst=analyst, action=payload.action, final_decision=final,
         notes=payload.notes, edited_letter=payload.edited_letter, edited_filing=payload.edited_filing,
     )  # fmt: skip
     session.add(review)
@@ -73,7 +77,7 @@ def apply_review(
     AuditLogger(session, dispute.id).log(
         f"human_{payload.action.value.lower()}", AuditActor.HUMAN,
         f"Agent recommended {agent_rec.value} @ {decision.confidence:.2f}",
-        f"{payload.analyst}: {payload.action.value} -> final decision {final.value}{changed}."
+        f"{analyst}: {payload.action.value} -> final decision {final.value}{changed}."
         + (f" Notes: {payload.notes}" if payload.notes else "")
         + (" Letter edited." if payload.edited_letter else "")
         + (" Filing edited." if payload.edited_filing else ""),

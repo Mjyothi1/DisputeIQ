@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.api import schemas as s
+from app.api.auth import Reviewer, current_reviewer
 from app.db import models as m
 from app.db.session import get_db
 from app.rules.config import get_rules_config
@@ -17,7 +18,7 @@ DB = Annotated[Session, Depends(get_db)]
 
 
 @router.get(
-    "/customers", response_model=list[s.CustomerOut], summary="List customers (demo helper)"
+    "/customers", dependencies=[Depends(current_reviewer)], response_model=list[s.CustomerOut], summary="List customers (demo helper)"
 )
 def customers(
     db: DB,
@@ -46,6 +47,7 @@ def customers(
 
 @router.get(
     "/customers/{customer_id}/transactions",
+    dependencies=[Depends(current_reviewer)],
     response_model=list[s.RecentTxnOut],
     summary="Recent transactions of a customer (demo helper)",
 )
@@ -87,7 +89,10 @@ def reason_codes() -> list[s.ReasonCodeOut]:
     ]
 
 
-@router.get("/metrics", response_model=s.Metrics, summary="Dashboard statistics")
+@router.get(
+    "/metrics", response_model=s.Metrics, summary="Dashboard statistics",
+    dependencies=[Depends(current_reviewer)],
+)
 def metrics(db: DB) -> s.Metrics:
     return compute_metrics(db)
 
@@ -107,3 +112,8 @@ def public_config() -> s.PublicConfig:
         llm_provider=settings.llm_provider,
         llm_model=resolve_model(settings),
     )
+
+
+@router.get("/auth/me", summary="Who am I (validates the reviewer key)")
+def me(reviewer: Reviewer) -> dict[str, str]:
+    return {"name": reviewer}

@@ -10,9 +10,6 @@ from collections import Counter, defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-
-UTC = timezone.utc  # datetime.UTC was added in Python 3.11; timezone.utc works everywhere
-
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -40,6 +37,8 @@ from data_gen.catalog import (
     MERCHANTS,
 )
 from data_gen.complaints import STYLES, ComplaintContext, ComplaintWriter, TemplateWriter, misspell
+
+UTC = timezone.utc  # datetime.UTC was added in Python 3.11; timezone.utc works everywhere
 
 C = MerchantCategory
 ONLINE = (C.ECOMMERCE, C.FOOD_DELIVERY, C.TRAVEL)

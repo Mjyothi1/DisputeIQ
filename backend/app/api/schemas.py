@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db.enums import (
     DisputeChannel,
@@ -25,9 +25,21 @@ class DisputeCreate(BaseModel):
     channel: DisputeChannel = DisputeChannel.FORM
     raw_text: str = Field(min_length=5, max_length=5000, description="The customer's complaint.")
 
+    @field_validator("raw_text")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 5 or not any(ch.isalnum() for ch in v):
+            raise ValueError("Complaint text is empty or has no readable content.")
+        return v
+
+
+class ReopenIn(BaseModel):
+    reason: str = Field(min_length=10, max_length=1000)
+
 
 class ReviewIn(BaseModel):
-    """An analyst action on a case.
+    """An analyst action on a case. The analyst identity comes from the authenticated key.
 
     APPROVE  - accept the agent's recommendation as is.
     EDIT     - accept the recommendation but with edited letter and/or filing (one required).
@@ -35,7 +47,6 @@ class ReviewIn(BaseModel):
     REJECT   - deny the customer's dispute (final decision REJECT).
     """
 
-    analyst: str = Field(min_length=1, max_length=120)
     action: ReviewAction
     final_decision: Recommendation | None = None
     reason_code: str | None = Field(
@@ -225,6 +236,7 @@ class Metrics(BaseModel):
     suspicious_flagged: int = 0
     by_reason_code: dict[str, int]
     by_recommendation: dict[str, int]
+    by_model: dict[str, int] = Field(default_factory=dict)  # who analysed each case (mock vs live)
     by_channel: dict[str, int] = Field(default_factory=dict)
     recent_recommendations: list[RecommendationSummary] = Field(default_factory=list)
     llm_provider_note: str | None = None

@@ -4,10 +4,9 @@ import json
 import logging
 import sys
 from datetime import datetime, timezone
+from typing import Any
 
 UTC = timezone.utc  # datetime.UTC was added in Python 3.11; timezone.utc works everywhere
-
-from typing import Any
 
 _RESERVED = set(logging.LogRecord("", 0, "", 0, "", None, None).__dict__) | {"message", "asctime"}
 

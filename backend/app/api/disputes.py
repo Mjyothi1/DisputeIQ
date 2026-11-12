@@ -7,18 +7,24 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api import schemas as s
+from app.api.auth import Reviewer, current_reviewer, submit_limiter
 from app.api.deps import Runner, get_embedder, get_runner
 from app.db import models as m
-from app.db.enums import DisputeStatus
+from app.db.enums import AuditActor, DisputeStatus
 from app.db.session import get_db
+from app.services.audit import AuditLogger
 from app.services.cases import QueueFilter, case_detail, list_disputes
 from app.services.embeddings import Embedder
 from app.services.review import ReviewError, apply_review
 
-router = APIRouter(prefix="/disputes", tags=["disputes"])
+router = APIRouter(
+    prefix="/disputes", tags=["disputes"], dependencies=[Depends(current_reviewer)]
+)
 DB = Annotated[Session, Depends(get_db)]
 
-PROCESSABLE = (DisputeStatus.NEW, DisputeStatus.NEEDS_HUMAN, DisputeStatus.AUTO_RESOLVED)
+# Terminal cases (AUTO_RESOLVED, approved, rejected...) are never re-run silently; an analyst
+# must reopen an AUTO_RESOLVED case explicitly (POST /{id}/reopen).
+PROCESSABLE = (DisputeStatus.NEW, DisputeStatus.NEEDS_HUMAN)
 
 
 def _get_or_404(db: Session, dispute_id: int) -> m.Dispute:
@@ -34,11 +40,13 @@ def submit_dispute(
     background: BackgroundTasks,
     db: DB,
     runner: Annotated[Runner, Depends(get_runner)],
+    reviewer: Reviewer,
     wait: Annotated[
         bool, Query(description="Run the agent inline and return the final status.")
     ] = False,
 ) -> s.ProcessAccepted:
     """Create a dispute from complaint text and start the agent (in the background by default)."""
+    submit_limiter.check(reviewer)
     if db.get(m.Customer, body.customer_id) is None:
         raise HTTPException(404, f"Customer {body.customer_id} not found")
     d = m.Dispute(customer_id=body.customer_id, channel=body.channel, raw_text=body.raw_text)
@@ -97,14 +105,18 @@ def process(
     background: BackgroundTasks,
     db: DB,
     runner: Annotated[Runner, Depends(get_runner)],
+    reviewer: Reviewer,
     wait: bool = False,
 ) -> s.ProcessAccepted:
+    submit_limiter.check(reviewer)
     d = _get_or_404(db, dispute_id)
     if d.status is DisputeStatus.PROCESSING:
         raise HTTPException(409, "Dispute is already being processed.")
     if d.status not in PROCESSABLE:
         raise HTTPException(
-            409, f"Dispute is {d.status.value}; a human decision exists and cannot be re-run."
+            409,
+            f"Dispute is {d.status.value}; closed cases are not re-run. "
+            "An analyst can reopen an AUTO_RESOLVED case via /reopen.",
         )
     if wait:
         runner(d.id)
@@ -121,12 +133,13 @@ def review(
     dispute_id: int,
     body: s.ReviewIn,
     db: DB,
+    reviewer: Reviewer,
     embedder: Annotated[Embedder | None, Depends(get_embedder)],
 ) -> s.CaseDetail:
     """APPROVE, EDIT (edited drafts), OVERRIDE (different decision, notes required) or REJECT."""
     d = _get_or_404(db, dispute_id)
     try:
-        apply_review(db, d, body, embedder)
+        apply_review(db, d, body, reviewer, embedder)
     except ReviewError as exc:
         raise HTTPException(exc.status_code, exc.detail) from exc
     db.refresh(d)
@@ -140,3 +153,25 @@ def audit(dispute_id: int, db: DB) -> list[s.AuditEventOut]:
         select(m.AuditEvent).where(m.AuditEvent.dispute_id == dispute_id).order_by(m.AuditEvent.id)
     )
     return [s.AuditEventOut.model_validate(r) for r in rows]
+
+
+@router.post(
+    "/{dispute_id}/reopen", response_model=s.CaseDetail, summary="Reopen an auto-resolved case"
+)
+def reopen(dispute_id: int, body: s.ReopenIn, db: DB, reviewer: Reviewer) -> s.CaseDetail:
+    """Exceptional, analyst-only: move an AUTO_RESOLVED case back to human review.
+
+    Previous decisions and audit events are kept; nothing is re-run and no new automatic refund
+    recommendation is created.
+    """
+    d = _get_or_404(db, dispute_id)
+    if d.status is not DisputeStatus.AUTO_RESOLVED:
+        raise HTTPException(409, f"Only AUTO_RESOLVED cases can be reopened (this is {d.status.value}).")
+    d.status = DisputeStatus.NEEDS_HUMAN
+    AuditLogger(db, d.id).log(
+        "human_reopen", AuditActor.HUMAN, "Case was AUTO_RESOLVED",
+        f"{reviewer} reopened for human review. Reason: {body.reason}",
+    )
+    db.commit()
+    db.refresh(d)
+    return case_detail(db, d)

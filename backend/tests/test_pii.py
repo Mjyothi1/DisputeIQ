@@ -65,3 +65,48 @@ def test_idempotent_and_counts() -> None:
 def test_multiple_in_one_text() -> None:
     res = mask_pii("9876543210 and 9123456780")
     assert res.counts == {"phone": 2}
+
+
+# ---- P1.2: extended identifier coverage (all values are synthetic) ---------------------------
+@pytest.mark.parametrize(
+    "text,gone,tag",
+    [
+        ("my aadhaar is 2345 6789 0123", "2345 6789 0123", "[AADHAAR]"),
+        ("Aadhaar number 234567890123 shared", "234567890123", "[AADHAAR]"),
+        ("id 2345-6789-0123 given", "2345-6789-0123", "[AADHAAR]"),
+        ("PAN is ABCDE1234F ok", "ABCDE1234F", "[PAN_ID]"),
+        ("pan abcde1234f", "abcde1234f", "[PAN_ID]"),
+        ("cvv 123 was entered", "123", "[CVV]"),
+        ("CVV is 4567", "4567", "[CVV]"),
+        ("otp is 482913 shared", "482913", "[OTP]"),
+        ("OTP: 123456", "123456", "[OTP]"),
+        ("654321 is my OTP", "654321", "[OTP]"),
+        ("card expiry 12/27", "12/27", "[EXPIRY]"),
+        ("valid thru 08/2028", "08/2028", "[EXPIRY]"),
+        ("paid via ravi.kumar@okhdfcbank today", "ravi.kumar@okhdfcbank", "[UPI_ID]"),
+        ("upi 9876543210@ybl", "9876543210@ybl", "[UPI_ID]"),
+    ],
+)
+def test_extended_identifiers_are_masked(text: str, gone: str, tag: str) -> None:
+    res = mask_pii(text)
+    assert gone not in res.text and tag in res.text, res.text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "order number 123456789012 was delayed",
+        "reference 4455667 for my complaint",
+        "I paid Rs 20,000 on 22/10/2026",
+        "I received no OTP and no message",
+        "the transaction id is TXN20261022",
+        "I tried 2-3 times at 10 pm",
+    ],
+)
+def test_harmless_numbers_are_left_alone(text: str) -> None:
+    assert mask_pii(text).text == text
+
+
+def test_email_still_masked_and_not_confused_with_upi() -> None:
+    res = mask_pii("write to a.b@example.com")
+    assert res.text == "write to [EMAIL]" and res.counts == {"email": 1}
