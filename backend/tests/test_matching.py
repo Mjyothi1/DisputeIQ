@@ -1,5 +1,4 @@
-﻿from datetime import datetime, timedelta, timezone
-UTC = timezone.utc  # Python 3.11+ compat
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -8,6 +7,8 @@ from app.db import models
 from app.db.enums import CardNetwork
 from app.tools.matching import ClaimFacts, match_transaction, resolve_date
 from tests.conftest import NOW, Factory
+
+UTC = timezone.utc  # Python 3.11+ compat
 
 T0 = NOW - timedelta(days=10)
 

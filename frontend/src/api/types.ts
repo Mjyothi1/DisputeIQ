@@ -232,6 +232,7 @@ export interface Metrics {
   suspicious_flagged?: number;
   by_reason_code: Record<string, number>;
   by_recommendation: Record<string, number>;
+  by_model: Record<string, number>;
   by_channel?: Record<string, number>;
   recent_recommendations?: RecommendationSummary[];
   llm_provider_note: string | null;

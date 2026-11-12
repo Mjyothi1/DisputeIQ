@@ -38,7 +38,12 @@ Safety properties:
 * Auto-resolve only if confidence >= 0.85 **and** amount <= INR 10,000 **and** a clear-cut
 REFUND on duplicate/ATM cases. Every rejection goes to a human.
 * LLM output is schema-validated; money and dates in letters are filled by code from the database.
-* Prompt injection is delimited, detected, and cannot reach decision logic.
+* Prompt injection is delimited and detected (heuristic), and the complaint text cannot set policy,
+  amounts, deadlines or routing: those come from deterministic code over database evidence. A flagged
+  complaint is always routed to a human. The model does influence extraction and reason-code
+  classification, so detection is a defence-in-depth layer, not the only one.
+* A transaction can never be auto-refunded twice: other disputes on the same transaction force human review.
+* Closed / auto-resolved cases are never silently re-run; reopening needs an authenticated analyst and a reason.
 * Friendly-fraud signals (e.g. OTP-authenticated "fraud" claims) are flagged and routed to humans.
 
 ## Run it locally (no Docker, free)
@@ -55,10 +60,21 @@ uvicorn app.main:app --reload --port 8000
 cd frontend && cp .env.example .env && npm install && npm run dev
 ```
 
-On first start the backend creates `backend/disputeiq.db` and fills it with the demo dataset
-(seeded relative to today, backlog processed by the offline rule engine so no Gemini quota is
-used). After that the data is kept: restarts never reset it. Live complaints from the
-"Submit complaint" page are analysed by Gemini.
+Demo data is **opt-in**: `BOOTSTRAP_DEMO_DATA` defaults to `false` everywhere (config, Docker,
+`.env.example`). For a brand-new empty database set it to `true` once: the backend then seeds the
+synthetic dataset (relative to today) and processes the backlog with the **offline rule engine
+(`mock-rules-v1`, not an LLM)**. Existing data is never touched. Live complaints from the
+"Submit complaint" page are analysed by the configured provider (Gemini by default); the case
+page and the Metrics "Analysed by" panel show which model handled each case.
+
+**Sign-in (prototype auth):** set `REVIEWER_ACCOUNTS="yourname=<long-random-key>"` in `.env`
+(generate a key with `python -c "import secrets;print(secrets.token_urlsafe(24))"`). Open the UI
+and enter the key; your reviewer name comes from the server, never from what you type.
+Without it every case/customer/metrics endpoint refuses. See [docs/SECURITY.md](docs/SECURITY.md).
+
+Isolated demo customers (one scenario each, so the frequent-disputer rule never interferes):
+`cd backend && python -m data_gen.demo_customers` (additive, never deletes). Script:
+[docs/DEMO_PLAN.md](docs/DEMO_PLAN.md).
 
 * UI: http://localhost:5173 · API docs: http://localhost:8000/docs
 * PostgreSQL works the same way: set `DATABASE_URL` and run `alembic upgrade head` first; that also
@@ -83,7 +99,8 @@ Then run the demo: [docs/demo.md](docs/demo.md).
 cd backend
 pytest -q                                    # unit + pipeline + API tests (SQLite)
 TEST_DATABASE_URL=postgresql+psycopg://disputeiq:disputeiq@localhost:5432/disputeiq pytest -q  # + pgvector tests
-ruff check . && mypy app
+ruff check .                                 # clean
+mypy app                                     # 8 known pre-existing findings (type-ignore/StrEnum on py3.13); not gating
 python -m eval.run_eval                      # 100 held-out TEST cases -> eval/results/
 
 cd ../frontend && npm test && npm run lint && npm run build
@@ -92,7 +109,8 @@ cd ../frontend && npm test && npm run lint && npm run build
 ## Using Gemini Flash (default), LLM-written complaints and Langfuse
 
 1. In `.env` set `LLM_PROVIDER=gemini`, `GEMINI_API_KEY=<Google AI Studio free-tier key>`, and
-optionally `GEMINI_MODEL` (default `gemini-3.5-flash-lite`). The key stays on the backend only —
+optionally `GEMINI_MODEL` (the default is defined once, in `backend/app/core/config.py`;
+the name is not verified against Google's live model list by this repo, so run `--ping-llm`). The key stays on the backend only —
 never in the frontend. Alternate providers (`anthropic` / `openai`) remain available.
 2. Verify a live call: `cd backend && python -m app.agent.cli --ping-llm` (or process a dispute).
 Rate-limit / quota / invalid-key errors are logged and shown; the app does **not** invent
@@ -103,43 +121,28 @@ analysis or switch to mock.
 traced with tokens and cost; only PII-masked text is sent.
 5. `python -m eval.run_eval` to get real-model numbers.
 
-## Evaluation results
+## Evaluation results (read the caveats first)
 
-Held-out TEST split (100 synthetic cases, never used for tuning; the agent never reads labels).
-Provider: **mock** rule-based baseline, since no LLM API keys were available in the build sandbox.
+There are two offline suites and, so far, **no live-Gemini accuracy number**. Full methodology:
+[docs/EVALUATION.md](docs/EVALUATION.md).
 
-|Metric|Result|
-|-|-|
-|Reason-code accuracy|100%|
-|Decision accuracy|98%|
-|Deadline violations (target 0)|0|
-|Auto-resolution rate / accuracy|18% / 100%|
-|Unsafe auto-resolutions (target 0)|0|
-|Prompt injection handled|2 of 3 (detected 3 of 3; the miss was routed to a human with the wrong action: NEED_MORE_INFO instead of REJECT)|
-|Avg latency|0.02 s (mock; real models will be seconds)|
-|Avg LLM cost per case|INR 1.07 (estimate)|
+| Suite | Provider | Cases | Reason code | Decision | Unsafe auto-resolutions |
+|-|-|-|-|-|-|
+| Synthetic template TEST split (`python -m eval.run_eval --provider mock`) | mock rules | 100 | 99% | 99% | 0 |
+| Hand-authored varied/Hinglish/adversarial (`python -m eval.handwritten --provider mock`) | mock rules | 33 | 83.3% (20/24 labelled) | routing 87.9% | 0 |
+| Either suite with `--provider gemini` | Gemini | - | **not run** (no key/quota in the build sandbox) | - | - |
 
-\### Live Gemini verification
+* The synthetic suite is **circular**: the mock classifier shares keywords with the complaint
+  templates, so ~100% shows pipeline/rule consistency, not language understanding. It is not Gemini's
+  accuracy and must not be quoted as such.
+* The hand-authored suite was written by an AI assistant imitating varied phrasing (not real customers)
+  and is small; treat it as a smoke-level signal.
+* The safety property that *is* verified: across both suites, **0 unsafe auto-resolutions** and every
+  injection-bearing complaint was flagged and sent to a human.
+* Live Gemini processing was observed separately (connectivity test; ~6 s per case, INR 0 on the free
+  tier, as reported by the project owner); that is an operational check, not an accuracy measurement.
 
-
-
-The running application was separately tested using the live Google Gemini
-
-provider (`gemini-3.5-flash-lite`). A successful provider connectivity test
-
-confirmed live model access. The application processed demonstration cases
-
-with an average processing time of 6.176 seconds and recorded INR 0 in
-
-provider cost. These live operational figures are separate from the mock-based
-
-held-out evaluation above.
-
-Full report with confusion matrix and misses: `backend/eval/results/latest.md`.
-
-**Read these numbers with care.** Complaints are template-generated, so 100% reason-code accuracy
-mostly shows the pipeline and rules are consistent, not that real customer text will score the same.
-Re-run with a real provider for meaningful accuracy and cost.
+Reports: `backend/eval/results/latest.md` (synthetic), `handwritten-mock.md`.
 
 ## Screenshots
 
@@ -185,7 +188,12 @@ Note: The free Render PostgreSQL database has a limited lifetime and should not 
 alternates. Langfuse export is optional and tested against a local stub when disabled.
 * Default complaints are template-written (an LLM writer is available via `--llm` but was not run here).
 * Simplified taxonomy; no network-specific rules, evidence formats or representment flow.
-* No authentication: the analyst name is typed in the UI. Put SSO in front for real use.
+* Prototype auth only: static per-reviewer bearer keys (`REVIEWER_ACCOUNTS`), no SSO/MFA/expiry/rotation.
+  Not production-ready. Concurrency guard is verified on SQLite (threads); the Postgres advisory-lock
+  path is implemented but was not exercised against a real Postgres here.
+* PII masking and prompt-injection detection are regex heuristics, not guarantees (see docs/SECURITY.md).
+* Similar-case retrieval (pgvector) is only active on PostgreSQL; the default `hash` embedder is lexical,
+  not semantic. Retrieved cases are passed to the classifier/rationale prompt as context.
 * Hash embeddings by default (set `EMBEDDING_PROVIDER=local` for sentence-transformers).
 * Docker Compose and deployment configs were not executed in the build sandbox (Postgres and
 pgvector were verified locally outside Docker).

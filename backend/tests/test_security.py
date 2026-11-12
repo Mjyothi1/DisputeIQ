@@ -1,18 +1,14 @@
 """Auth, duplicate-refund protection, lifecycle rules and input validation (P0.1, P0.2, P1.4)."""
 
-from collections.abc import Iterator
-from pathlib import Path
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from app.api.auth import parse_accounts
 from app.core.config import Settings, get_settings
 from app.db import models as m
-from app.db.enums import AuditActor, DisputeStatus
+from app.db.enums import DisputeStatus
 from app.main import app
 from tests.test_api import TEST_KEY, Env, env, template_db  # noqa: F401  (fixtures)
 

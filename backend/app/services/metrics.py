@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.agent.llm import resolve_model
 from app.api.schemas import Metrics, RecommendationSummary
 from app.core.config import get_settings
 from app.core.timeutil import as_utc, utcnow
@@ -139,6 +140,7 @@ def compute_metrics(
             ).group_by(m.Decision.recommendation)
         ).all()},
         by_channel=by_channel,
+        by_model=_count_by(d.model or "unknown" for d in latest_dec.values()),
         recent_recommendations=recent_recs,
         llm_provider_note=(
             "Provider 'mock' is an offline rule-based stand-in; cost and latency are estimates. "
@@ -147,7 +149,7 @@ def compute_metrics(
             else (
                 f"Live LLM: {settings.llm_provider}"
                 + (
-                    f" / {settings.gemini_model or settings.llm_model or 'gemini-3.8-flash'} "
+                    f" / {resolve_model(settings)} "
                     "(Google free tier; cost recorded as INR 0)."
                     if settings.llm_provider == "gemini"
                     else f" / {settings.llm_model or 'default'}."
@@ -156,6 +158,13 @@ def compute_metrics(
         ),
         evaluation=load_latest_eval(eval_path or EVAL_LATEST),
     )  # fmt: skip
+
+
+def _count_by(values: Any) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for v in values:
+        out[v] = out.get(v, 0) + 1
+    return out
 
 
 def _count_injections(session: Session) -> int:

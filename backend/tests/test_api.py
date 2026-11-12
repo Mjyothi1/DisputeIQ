@@ -1,9 +1,8 @@
-﻿"""API integration tests: real FastAPI app + real pipeline (offline mock LLM) on a seeded SQLite DB."""
+"""API integration tests: real FastAPI app + real pipeline (offline mock LLM) on a seeded SQLite DB."""
 
 import shutil
 from collections.abc import Callable, Iterator
 from datetime import datetime, timezone
-UTC = timezone.utc  # Python 3.11+ compat
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +23,8 @@ from app.main import app
 from app.services.retrieval import NullRetriever
 from data_gen.generate import generate
 from tests.conftest import SQLITE_TABLES
+
+UTC = timezone.utc  # Python 3.11+ compat
 
 ANCHOR = datetime(2026, 10, 26, 12, tzinfo=UTC)
 TEST_KEY = "test-reviewer-key-123"

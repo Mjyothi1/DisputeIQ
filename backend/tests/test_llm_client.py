@@ -192,3 +192,17 @@ def test_invalid_credentials_are_not_retried() -> None:
     with pytest.raises(LLMError, match="credentials rejected"):
         call(client(b, []))
     assert b.calls == 1
+
+
+def test_model_name_is_consistent_across_repo_config() -> None:
+    """One default model: config.py, render.yaml, .env.example and docs must not contradict."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    default = Settings(_env_file=None).gemini_model
+    assert resolve_model(Settings(_env_file=None, llm_provider="gemini")) == default
+    assert re.search(rf"GEMINI_MODEL\s+value: {re.escape(default)}\b", (root / "render.yaml").read_text().replace("\n", " ")) or default in (root / "render.yaml").read_text()
+    for name in ("README.md", "DECISIONS.md", ".env.example", "docs/api.md"):
+        for found in re.findall(r"gemini-\d[\w.\-]*", (root / name).read_text()):
+            assert found == default, f"{name} mentions {found}, config default is {default}"

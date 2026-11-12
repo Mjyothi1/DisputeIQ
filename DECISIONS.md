@@ -36,7 +36,7 @@ Ambiguities are resolved in favour of the simpler option and recorded here.
 13. **Documents: placeholders only.** The LLM writes prose with `{amount}`-style placeholders;
     code fills values from the DB and rejects model text containing literal amounts, dates or long
     numbers (falls back to a deterministic template and records it in the audit trail).
-14. **Gemini Flash is the default LLM** (`LLM_PROVIDER=gemini`, model `gemini-3.8-flash` via
+14. **Gemini Flash is the default LLM** (`LLM_PROVIDER=gemini`, model default defined once in `backend/app/core/config.py` via
     `GEMINI_MODEL`, SDK `google-genai`, key `GEMINI_API_KEY`). Verified free-tier eligible on the
     Gemini Developer API (input/output free of charge). The offline `mock` provider remains only
     as an **explicit** opt-in for tests/demos — Gemini failures (rate limit, quota, bad key,
@@ -83,3 +83,19 @@ Ambiguities are resolved in favour of the simpler option and recorded here.
     end to end (seed, 100-case eval with identical accuracy, API submit/process). Alembic migrations
     and pgvector remain the Postgres path.
 30. **`eval.run_eval` only overwrites `latest.*` on a full run** (no `--limit`, at least one case).
+
+
+## Final hardening decisions (Zeta Innovate 2026)
+
+15. **Prototype reviewer auth** (`REVIEWER_ACCOUNTS`, bearer keys). The analyst name is derived from the key on the
+    server; the client can no longer supply it. Fails closed. Explicitly not SSO.
+16. **Duplicate-refund guard in the pipeline's route step**: per-transaction lock (+ Postgres advisory lock),
+    check for other disputes on the same transaction, decision and commit inside the lock. Chosen over a partial
+    unique index because creating one would fail on existing duplicate rows in a live database and could stop a
+    deployment's `alembic upgrade head`.
+17. **Terminal cases are never re-run.** Only NEW / NEEDS_HUMAN are processable (atomic claim); an analyst can
+    reopen an AUTO_RESOLVED case with a reason (`POST /disputes/{id}/reopen`), history preserved.
+18. **429 is transient unless it names a daily/billing quota**; bounded retries with exponential backoff, jitter
+    and Retry-After; hard quota and auth errors are never retried; retries are audited.
+19. **Evaluation runs on its own in-memory database** and is split into mock vs live; mock results are labelled
+    as circular and never presented as Gemini accuracy.

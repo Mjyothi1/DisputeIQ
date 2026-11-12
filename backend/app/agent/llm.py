@@ -44,7 +44,7 @@ PRICING: dict[str, tuple[float, float]] = {
 DEFAULT_PRICE = (3.0, 15.0)
 
 DEFAULT_MODELS = {
-    "gemini": "gemini-3.8-flash",
+    "gemini": Settings.model_fields["gemini_model"].default,  # one source of truth: config.py
     "anthropic": "claude-sonnet-5-5",
     "openai": "gpt-4o-mini",
     "mock": "mock-rules-v1",

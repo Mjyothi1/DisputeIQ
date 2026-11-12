@@ -3,9 +3,10 @@
     python -m eval.run_eval                 # all TEST disputes
     python -m eval.run_eval --limit 20      # quick smoke run
 
-Run it against a database seeded with ``data_gen.seed`` (and ``data_gen.build_memory`` for the
-similar-case memory). Each TEST dispute is (re)processed by the real pipeline, then compared with
-its ground-truth label. Writes ``eval/results/<timestamp>.{json,md}`` and ``latest.json`` (the file
+It generates its own private in-memory database (seed 42), so it never touches your real data.
+Each TEST dispute is processed by the real pipeline, then compared with its ground-truth label.
+The complaints are template-generated: mock results are circular (the offline classifier shares
+keywords with the templates) and must never be quoted as Gemini accuracy. Writes ``eval/results/<timestamp>.{json,md}`` and ``latest.json`` (the file
 the dashboard reads). This is the only place, apart from data generation, that reads ground truth.
 """
 
@@ -14,20 +15,20 @@ import json
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
-
-UTC = timezone.utc  # datetime.UTC was added in Python 3.11; timezone.utc works everywhere
-
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
 
+from app.agent.llm import resolve_model
 from app.agent.pipeline import ProcessResult, build_pipeline
 from app.core.config import get_settings
 from app.core.timeutil import as_utc
 from app.db import models
 from app.db.enums import DataSplit, DisputeStatus, Recommendation
 from app.rules.config import RulesConfig, get_rules_config
+
+UTC = timezone.utc  # datetime.UTC was added in Python 3.11; timezone.utc works everywhere
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 FILING_ACTIONS = {Recommendation.REFUND.value, Recommendation.FILE_CHARGEBACK.value}
@@ -222,15 +223,27 @@ def run(
     out_dir: Path = RESULTS_DIR,
     provider: str | None = None,
 ) -> dict[str, Any]:
+    from sqlalchemy import StaticPool, create_engine
+    from sqlalchemy.orm import Session
+
     from app.core.config import Settings
-    from app.db.session import get_session_factory
+    from app.db.base import Base
+    from data_gen.generate import generate
 
     settings = get_settings()
     if provider:
-        settings = Settings(llm_provider=provider)
+        settings = Settings(llm_provider=provider)  # type: ignore[arg-type]
     cfg = get_rules_config()
     outcomes: list[CaseOutcome] = []
-    with get_session_factory()() as session:
+    # Always evaluate on a private, freshly generated in-memory database (seed 42): it never
+    # touches the configured/production database, and every case starts as a NEW dispute so the
+    # "closed cases are not re-run" rule cannot silently skip anything.
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(
+        engine, tables=[t for t in Base.metadata.sorted_tables if t.name != "case_embeddings"]
+    )
+    with Session(engine) as session:
+        generate(session, seed=42, anchor=datetime(2026, 10, 26, 12, tzinfo=UTC), n_background=1200)
         stmt = (
             select(models.Dispute)
             .where(models.Dispute.split == DataSplit.TEST)
@@ -278,15 +291,17 @@ def run(
     meta = {
         "generated_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
         "provider": settings.llm_provider,
-        "model": settings.llm_model if settings.llm_provider != "mock" else "mock-rules-v1",
+        "model": resolve_model(settings) if settings.llm_provider != "mock" else "mock-rules-v1",
         "note": note,
     }
     report = build_report(outcomes, meta)
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     body = json.dumps(report, indent=2, default=str)
-    (out_dir / f"{stamp}.json").write_text(body)
-    (out_dir / f"{stamp}.md").write_text(to_markdown(report))
+    (out_dir / f"{stamp}-{settings.llm_provider}.json").write_text(body)
+    (out_dir / f"{stamp}-{settings.llm_provider}.md").write_text(to_markdown(report))
+    if outcomes and limit is None:  # one file per provider so mock and live never overwrite each other
+        (out_dir / f"synthetic-{settings.llm_provider}.json").write_text(body)
     if outcomes and limit is None:  # partial (--limit) or empty runs never replace the headline
         (out_dir / "latest.json").write_text(body)
         (out_dir / "latest.md").write_text(to_markdown(report))

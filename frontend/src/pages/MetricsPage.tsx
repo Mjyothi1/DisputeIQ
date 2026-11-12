@@ -126,7 +126,7 @@ export function MetricsPage() {
           <Stat
             label="Avg cost per case"
             value={inr(m.avg_cost_inr, 3)}
-            hint={`${inr(m.total_cost_inr)} total`}
+            hint={`${inr(m.total_cost_inr)} total · offline runs are priced at a reference rate (estimate); Gemini free tier bills INR 0`}
           />
           <Stat
             label="Open past deadline"
@@ -152,6 +152,21 @@ export function MetricsPage() {
           <BarList data={m.by_reason_code} label={humanize} />
         </Panel>
 
+        <Panel title="Analysed by">
+          <BarList
+            data={m.by_model ?? {}}
+            label={(k) =>
+              k.startsWith("mock")
+                ? `${k} (offline rules, not an LLM)`
+                : k.startsWith("gemini")
+                  ? `${k} (live Gemini)`
+                  : k
+            }
+          />
+          <p className="mt-3 text-xs text-muted-foreground">
+            Seeded queue cases are processed offline; only live submissions use Gemini.
+          </p>
+        </Panel>
         <Panel
           title="Agent recommendations"
           action={

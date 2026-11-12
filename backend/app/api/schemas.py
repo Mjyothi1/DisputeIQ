@@ -236,6 +236,7 @@ class Metrics(BaseModel):
     suspicious_flagged: int = 0
     by_reason_code: dict[str, int]
     by_recommendation: dict[str, int]
+    by_model: dict[str, int] = Field(default_factory=dict)  # who analysed each case (mock vs live)
     by_channel: dict[str, int] = Field(default_factory=dict)
     recent_recommendations: list[RecommendationSummary] = Field(default_factory=list)
     llm_provider_note: str | None = None

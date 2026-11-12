@@ -1,5 +1,4 @@
-﻿from datetime import datetime, timezone
-UTC = timezone.utc  # Python 3.11+ compat
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
@@ -12,6 +11,8 @@ from app.rules.eligibility import check_eligibility
 from app.rules.policy import baseline_recommendation
 from app.tools.evidence import run_all_checks
 from data_gen.generate import PLAN, generate
+
+UTC = timezone.utc  # Python 3.11+ compat
 
 ANCHOR = datetime(2026, 10, 26, 12, tzinfo=UTC)
 

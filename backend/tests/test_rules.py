@@ -1,5 +1,4 @@
-﻿from datetime import datetime, timedelta, timezone
-UTC = timezone.utc  # Python 3.11+ compat
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -14,6 +13,8 @@ from app.rules.policy import (
 )
 from app.rules.routing import route
 from app.rules.types import Blocker, CheckName, EvidenceItem, Finding, RouteTarget
+
+UTC = timezone.utc  # Python 3.11+ compat
 
 NOW = datetime(2026, 10, 26, 12, 0, tzinfo=UTC)
 

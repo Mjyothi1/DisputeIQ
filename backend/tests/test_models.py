@@ -1,8 +1,7 @@
-﻿"""Schema tests. The DB round-trip runs only when TEST_DATABASE_URL points at Postgres."""
+"""Schema tests. The DB round-trip runs only when TEST_DATABASE_URL points at Postgres."""
 
 import os
 from datetime import datetime, timezone
-UTC = timezone.utc  # Python 3.11+ compat
 from decimal import Decimal
 
 import pytest
@@ -20,6 +19,8 @@ from app.db.enums import (
     MerchantCategory,
     TxnChannel,
 )
+
+UTC = timezone.utc  # Python 3.11+ compat
 
 EXPECTED_TABLES = {
     "customers",

@@ -43,7 +43,8 @@ cd frontend
 npm run dev
 ```
 
-Open http://localhost:5173 and type your name in the header.
+Open http://localhost:5173 and sign in with the reviewer key from `REVIEWER_ACCOUNTS` in your `.env`
+(see README). Without that setting the API refuses case, customer and metrics requests.
 
 ## How the data works
 

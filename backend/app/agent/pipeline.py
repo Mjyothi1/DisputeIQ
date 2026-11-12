@@ -675,7 +675,7 @@ class Pipeline:
                 models.Dispute.status.in_(RUNNABLE_STATUSES),
             )
             .values(status=DisputeStatus.PROCESSING)
-        ).rowcount
+        ).rowcount  # type: ignore[attr-defined]
         if not claimed:
             self.session.rollback()
             self.session.refresh(d)

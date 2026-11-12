@@ -1,8 +1,7 @@
-﻿"""End-to-end pipeline tests on a seeded in-memory database (offline mock LLM)."""
+"""End-to-end pipeline tests on a seeded in-memory database (offline mock LLM)."""
 
 from collections.abc import Iterator
 from datetime import datetime, timezone
-UTC = timezone.utc  # Python 3.11+ compat
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +20,8 @@ from app.services.pii import mask_pii
 from app.services.retrieval import InMemoryRetriever
 from data_gen.generate import generate
 from tests.conftest import SQLITE_TABLES
+
+UTC = timezone.utc  # Python 3.11+ compat
 
 NODES = [
     "mask_pii", "intake_extract", "match_transaction", "run_evidence_checks",

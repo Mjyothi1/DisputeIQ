@@ -17,6 +17,6 @@ Additions used by the UI beyond the original brief: `GET /customers`,
 `GET /customers/{id}/transactions`, `GET /reason-codes`, `GET /config`
 (`llm_provider` / `llm_model` are included so the UI can show live Gemini vs mock).
 
-LLM: default `LLM_PROVIDER=gemini` with `GEMINI_API_KEY` / `GEMINI_MODEL=gemini-3.8-flash`
+LLM: default `LLM_PROVIDER=gemini` with `GEMINI_API_KEY` / `GEMINI_MODEL` (default in config.py)
 (free tier). Failures are audited on the case; there is no silent mock fallback.
 Connectivity check: `python -m app.agent.cli --ping-llm`.
