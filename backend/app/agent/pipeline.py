@@ -10,6 +10,7 @@ never reads ``disputes.ground_truth`` (enforced by a test).
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -56,6 +57,88 @@ from app.tools.matching import ClaimFacts, match_transaction
 
 logger = logging.getLogger(__name__)
 TOP_K_SIMILAR = 3
+
+
+_MONTHS = {
+    name.lower(): number
+    for number, names in enumerate(
+        [
+            ("January", "Jan"), ("February", "Feb"), ("March", "Mar"),
+            ("April", "Apr"), ("May",), ("June", "Jun"),
+            ("July", "Jul"), ("August", "Aug"), ("September", "Sep"),
+            ("October", "Oct"), ("November", "Nov"), ("December", "Dec"),
+        ],
+        start=1,
+    )
+    for name in names
+}
+
+
+
+
+def _recover_extraction_facts(text: str, extraction: ClaimExtraction) -> ClaimExtraction:
+    """Recover explicit facts omitted by the LLM without overwriting valid values."""
+    recovered: dict[str, Any] = {}
+
+    if extraction.claimed_amount is None:
+        for match in re.finditer(r"(\d[\d,]*(?:\.\d{1,2})?)", text):
+            prefix = text[max(0, match.start() - 12):match.start()]
+            has_currency = (
+                chr(8377) in prefix
+                or re.search(r"\bINR\b|\bRs\.?\s*$", prefix, re.IGNORECASE) is not None
+            )
+            if has_currency:
+                recovered["claimed_amount"] = float(match.group(1).replace(",", ""))
+                break
+
+    if extraction.approx_day is None or extraction.approx_month is None:
+        months = {
+            "jan": 1, "january": 1, "feb": 2, "february": 2,
+            "mar": 3, "march": 3, "apr": 4, "april": 4,
+            "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+            "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9,
+            "oct": 10, "october": 10, "nov": 11, "november": 11,
+            "dec": 12, "december": 12,
+        }
+        word_date = re.search(
+            r"\b(?P<day>\d{1,2})\s+"
+            r"(?P<month>January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)"
+            r"(?:,?\s+(?P<year>\d{4}))?\b",
+            text, re.IGNORECASE,
+        )
+        numeric_date = re.search(
+            r"\b(?P<day>\d{1,2})[/-](?P<month>\d{1,2})(?:[/-](?P<year>\d{4}))?\b",
+            text,
+        )
+
+        day = month = year = None
+        if word_date:
+            day = int(word_date.group("day"))
+            month = months[word_date.group("month").lower()]
+            year = word_date.group("year")
+        elif numeric_date:
+            day = int(numeric_date.group("day"))
+            month = int(numeric_date.group("month"))
+            year = numeric_date.group("year")
+
+        if day is not None and month is not None and 1 <= day <= 31 and 1 <= month <= 12:
+            if extraction.approx_day is None:
+                recovered["approx_day"] = day
+            if extraction.approx_month is None:
+                recovered["approx_month"] = month
+            if extraction.approx_year is None and year:
+                recovered["approx_year"] = int(year)
+
+    if extraction.merchant_hint is None:
+        merchant = re.search(
+            r"\bat\s+([A-Za-z0-9][A-Za-z0-9 &'()/.-]{1,79}?)"
+            r"(?=\s+on\b|[,.;\n]|$)",
+            text, re.IGNORECASE,
+        )
+        if merchant:
+            recovered["merchant_hint"] = merchant.group(1).strip()
+
+    return extraction.model_copy(update=recovered) if recovered else extraction
 
 
 class AgentState(TypedDict, total=False):
@@ -209,6 +292,7 @@ class Pipeline:
             extraction = ClaimExtraction(claim_type="OTHER", summary="Extraction failed")
             telemetry = None
             update["needs_human_reasons"] = self._flag(state, "Claim extraction failed.")
+        extraction = _recover_extraction_facts(text, extraction)
         if flags and not extraction.injection_suspected:
             extraction = extraction.model_copy(update={"injection_suspected": True})
         d.extracted_fields = {**extraction.model_dump(), "injection_patterns": flags}

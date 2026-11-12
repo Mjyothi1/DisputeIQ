@@ -87,7 +87,7 @@ def test_every_node_writes_an_audit_event_in_order(world: tuple[Session, Pipelin
     llm_steps = {e.step for e in events(s, d.id) if e.model}
     assert {"intake_extract", "classify_reason_code", "recommend", "draft_documents"} <= llm_steps
     assert {e.actor for e in events(s, d.id)} == {AuditActor.TOOL, AuditActor.AGENT}
-    assert all(e.prompt_version == "v1" for e in events(s, d.id) if e.model)
+    assert all(e.prompt_version == "v2" for e in events(s, d.id) if e.model)
 
 
 def test_evidence_and_decision_persisted(world: tuple[Session, Pipeline]) -> None:
