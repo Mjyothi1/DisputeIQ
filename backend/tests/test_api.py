@@ -287,10 +287,13 @@ def test_queue_sorted_by_deadline_urgency_open_cases_first(
     env: Env, processed: dict[str, int]
 ) -> None:
     items = env.client.get("/disputes?status=NEEDS_HUMAN&page_size=100").json()["items"]
-    deadlines = [i["deadline_at"] for i in items if i["deadline_at"]]
-    assert deadlines == sorted(deadlines) and len(deadlines) >= 2
+    # actionable cases first (soonest deadline first); cases already out of window when filed last
+    late = [i["filed_late"] for i in items]
+    assert late == sorted(late)
+    deadlines = [i["deadline_at"] for i in items if i["deadline_at"] and not i["filed_late"]]
+    assert deadlines == sorted(deadlines) and deadlines
     # un-deadlined (e.g. unmatched) cases come after those with deadlines
-    flags = [i["deadline_at"] is None for i in items]
+    flags = [i["deadline_at"] is None for i in items if not i["filed_late"]]
     assert flags == sorted(flags)
     allrows = env.client.get("/disputes?page_size=100").json()["items"]
     first_closed = next(

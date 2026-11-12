@@ -274,7 +274,7 @@ function Table({
                   <ConfidenceMeter value={d.confidence} threshold={threshold} />
                 </td>
                 <td className="px-3 py-3">
-                  <DeadlineGauge days={d.days_to_deadline} atRiskDays={atRisk} />
+                  <DeadlineGauge days={d.days_to_deadline} atRiskDays={atRisk} filedLate={d.filed_late} />
                 </td>
                 <td className="px-3 py-3">
                   <StatusBadge status={d.status} />
@@ -296,7 +296,7 @@ function Table({
                 <div>
                   <div className="font-medium text-primary">{caseRef(d.id)}</div>
                   <div className="text-sm text-muted-foreground">
-                    {d.customer_name} Â· {humanize(d.reason_code)}
+                    {d.customer_name} · {humanize(d.reason_code)}
                   </div>
                 </div>
                 <StatusBadge status={d.status} />
@@ -307,7 +307,7 @@ function Table({
               </div>
               <div className="mt-2 flex items-center justify-between gap-3">
                 <ConfidenceMeter value={d.confidence} threshold={threshold} />
-                <DeadlineGauge days={d.days_to_deadline} atRiskDays={atRisk} />
+                <DeadlineGauge days={d.days_to_deadline} atRiskDays={atRisk} filedLate={d.filed_late} />
               </div>
             </Link>
           </li>

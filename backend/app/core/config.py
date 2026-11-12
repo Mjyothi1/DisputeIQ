@@ -1,17 +1,20 @@
 """Application settings, loaded from environment variables / .env."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
     """Typed application settings. No secrets are hardcoded; all come from the environment."""
 
     model_config = SettingsConfigDict(
-        env_file=("../.env", ".env"), env_file_encoding="utf-8", extra="ignore"
+        env_file=(BACKEND_DIR.parent / ".env", BACKEND_DIR / ".env"), env_file_encoding="utf-8", extra="ignore"
     )
 
     app_env: str = "development"
@@ -37,6 +40,9 @@ class Settings(BaseSettings):
     embedding_model: str = ""
     embedding_dim: int = Field(default=384, gt=0)
 
+    # Fill an EMPTY database with the synthetic demo dataset on startup (never touches existing data).
+    bootstrap_demo_data: bool = False
+
     langfuse_enabled: bool = False
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
@@ -46,6 +52,25 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_secrets(cls, v: object) -> object:
         return v.strip() if isinstance(v, str) else v
+
+    @property
+    def resolved_database_url(self) -> str:
+        """DATABASE_URL with a relative SQLite path pinned to the backend folder.
+
+        ``sqlite:///./disputeiq.db`` used to resolve against whatever folder the command ran in, so
+        starting the server from a different folder silently opened a new, empty database.
+        """
+        url = self.database_url
+        # Render/Supabase hand out postgres:// or postgresql:// URLs; we ship the psycopg 3 driver.
+        for scheme in ("postgres://", "postgresql://"):
+            if url.startswith(scheme):
+                return "postgresql+psycopg://" + url[len(scheme) :]
+        prefix = "sqlite:///"
+        if url.startswith(prefix) and not url.startswith("sqlite:////"):
+            rel = url[len(prefix):]
+            if rel and rel != ":memory:" and not Path(rel).is_absolute():
+                return prefix + str((BACKEND_DIR / rel).resolve())
+        return url
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -70,6 +70,7 @@ class DisputeSummary(BaseModel):
     amount: Decimal | None
     deadline_at: datetime | None
     days_to_deadline: int | None
+    filed_late: bool = False
     created_at: datetime
 
 
@@ -155,6 +156,7 @@ class CaseDetail(BaseModel):
     confidence: float | None
     deadline_at: datetime | None
     days_to_deadline: int | None
+    filed_late: bool = False
     created_at: datetime
     transaction: TransactionOut | None
     evidence: list[EvidenceOut]
