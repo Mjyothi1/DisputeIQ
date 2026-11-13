@@ -29,8 +29,8 @@ from app.core.security import (
 from app.db import models as m
 from app.db.enums import DisputeChannel
 from app.db.session import get_db
-from app.services.customer_view import CATEGORIES, customer_status, timeline
 from app.services.customer_email import send_customer_verification_code
+from app.services.customer_view import CATEGORIES, customer_status, timeline
 
 router = APIRouter(prefix="/portal", tags=["customer portal"])
 DB = Annotated[Session, Depends(get_db)]
