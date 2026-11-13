@@ -126,6 +126,27 @@ def test_register_requires_email_verification_then_allows_login(w: World, monkey
     assert w.anon.post("/portal/verify-email", json={"email": "new.user@example.com", "code": sent[0][1]}).status_code == 400
 
 
+def test_resend_replaces_the_previous_verification_code(w: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[str] = []
+    monkeypatch.setattr(
+        "app.api.portal.send_customer_verification_code",
+        lambda settings, recipient, code: sent.append(code),
+    )
+    registered = w.anon.post(
+        "/portal/register",
+        json={"email": "resend@example.com", "password": "longenough1", "name": "Resend User"},
+    )
+    assert registered.status_code == 201
+    resent = w.anon.post("/portal/resend-verification", json={"email": "resend@example.com"})
+    assert resent.status_code == 200 and len(sent) == 2
+    assert w.anon.post(
+        "/portal/verify-email", json={"email": "resend@example.com", "code": sent[0]}
+    ).status_code == 400
+    assert w.anon.post(
+        "/portal/verify-email", json={"email": "resend@example.com", "code": sent[1]}
+    ).status_code == 200
+
+
 def test_registration_fails_closed_when_smtp_is_not_configured(w: World) -> None:
     r = w.anon.post("/portal/register", json={"email": "nobody@example.com", "password": "longenough1", "name": "New User"})
     assert r.status_code == 503
