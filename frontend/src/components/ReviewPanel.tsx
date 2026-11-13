@@ -99,6 +99,7 @@ export function ReviewPanel({ detail, letter, filing, letterChanged, filingChang
       <h2 className="mb-1 font-semibold">Your decision</h2>
       <p className="mb-3 text-sm text-muted-foreground">
         Agent recommends <RecommendationBadge value={rec} />
+        <span className="mt-1 block text-xs">A recommendation, not yet approved. Nothing is sent to the customer until you decide.</span>
       </p>
       {nameMissing && (
         <p className="mb-3 rounded-control bg-warn/14 p-2 text-sm text-warn" role="alert">

@@ -10,9 +10,13 @@
      Hinglish works too: *Ek hi order tha, do baar paise kat gaye.*
 5. Submit. You get a reference such as **DIQ-000312** and a **Track this complaint** link.
 6. The status moves Submitted → Processing → result, usually within ~10 s with Gemini:
-   - **Approved**: the refund was *authorised* automatically (low value, verified duplicate, high confidence). The
-     page says plainly that the credit is processed separately and is not confirmed here.
+   - **Refund authorised**: approved automatically (low value, verified duplicate, high confidence). The page says the
+     bank makes the payment separately. DisputeIQ never says a refund was *processed* or *credited*: it has no payment
+     integration, so it can't confirm that money arrived.
    - **Under review**: a bank specialist will decide (e.g. Gemini confidence below 0.85, or Kavya/Arjun/Sana cases).
+     When the evidence supports the claim the message reads: *"Your dispute is currently under review. Our team has
+     identified evidence supporting your claim and is evaluating the appropriate resolution."* The agent's
+     recommendation itself is never shown to the customer as an outcome, and no letter is shown until a decision.
 7. After a reviewer decides, the same page shows the decision, the bank's letter (when it applies) and the timeline.
 
 What customers never see: reviewer names or notes, evidence checks, AI confidence or model, injection flags.

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ApiError } from "@/api/client";
 import { useCase, useConfig, useReopen, useRerun } from "@/api/hooks";
+import { letterStatusNotice } from "@/lib/refundWording";
 import type { CaseDetail } from "@/api/types";
 import { AuditTimeline } from "@/components/AuditTimeline";
 import { RecommendationBadge, StatusBadge } from "@/components/badges";
@@ -289,6 +290,8 @@ function Body({ detail }: { detail: CaseDetail }) {
                   value={letter}
                   onChange={setLetter}
                   readOnly={locked}
+                  notice={letterStatusNotice(detail.status, dec.recommendation)}
+                  checkRefundClaims
                 />
                 {(origFiling || startFiling) && (
                   <DraftEditor

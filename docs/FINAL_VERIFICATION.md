@@ -28,3 +28,17 @@ without a secret, customer view excludes notes/evidence/model/confidence, review
 - In-process rate limits (single instance).
 - A new self-registered customer has no cards; linking real accounts would need KYC/onboarding.
 - No payment integration: "Approved" means a refund/chargeback was *authorised*, not credited.
+
+## Refund wording (follow-up fix)
+- **Problem:** the refund letter template (and the offline engine's letter) said "we are refunding the amount to your
+  account" while the case could still be awaiting review. There is no payment integration.
+- **Fix:** templates and the prompt now say "refund authorised; the bank makes the payment separately". Model text that
+  claims a completed refund is rejected, and the template is used instead (recorded in the audit). Letters already
+  stored with the old wording are corrected when displayed; database rows are unchanged. Customer messages:
+  - awaiting review → "under review" wording (the evidence-supported version only when a refund or chargeback is
+    recommended), with no letter;
+  - approved → "Refund authorised".
+  A reviewer-edited letter that claims payment is withheld from the customer.
+- **Tests:** `backend/tests/test_refund_wording.py` covers every backend status and checks that no notes or rationale
+  leak. `frontend/src/test/refundWording.test.tsx` covers the guard (same cases as the backend), the reviewer
+  notices, the warning and the customer pages.
