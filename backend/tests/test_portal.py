@@ -227,7 +227,9 @@ def test_reviewer_decision_reaches_the_customer(w: World) -> None:
     assert r.status_code == 200
     after = kavya.get(f"/portal/disputes/{did}").json()
     assert after["status"] == "APPROVED" and "chargeback" in after["message"]
-    assert after["letter"] is None  # agent's letter was for REJECT; never shown after an override
+    # The letter follows the reviewer's FINAL decision (chargeback), never the agent's REJECT draft
+    assert after["letter"] and "formal dispute with the merchant" in after["letter"]
+    assert "unable to raise a dispute" not in after["letter"] and "Dear Kavya," in after["letter"]
     assert "stolen" not in str(after)  # reviewer notes stay internal
     assert [t["label"] for t in after["timeline"]][-1] == "Decision: Approved"
 

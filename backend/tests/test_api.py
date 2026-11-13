@@ -358,9 +358,11 @@ def test_vague_case_edited_by_analyst_demo_c(env: Env, processed: dict[str, int]
     c = r.json()
     assert r.status_code == 200 and c["status"] == "APPROVED"
     assert c["reviews"][0]["edited_letter"].startswith("Dear customer")
-    assert (
-        c["decision"]["drafted_customer_letter"] != c["reviews"][0]["edited_letter"]
-    )  # agent draft preserved
+    # the case now shows the letter that was actually sent; the agent's stored draft is preserved
+    assert c["decision"]["drafted_customer_letter"] == c["reviews"][0]["edited_letter"]
+    with env.session() as s:
+        stored = s.scalars(select(m.Decision).where(m.Decision.dispute_id == did)).first()
+        assert stored is not None and stored.drafted_customer_letter != c["reviews"][0]["edited_letter"]
     assert "Letter edited" in c["audit"][-1]["output_summary"]
 
 

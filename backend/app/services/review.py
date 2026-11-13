@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.agent.documents import claims_completed_refund
 from app.api.schemas import ReviewIn
 from app.db import models as m
 from app.db.enums import AuditActor, DisputeStatus, Recommendation, ReviewAction
@@ -57,6 +58,13 @@ def apply_review(
                 422, f"{payload.action.value} cannot change the decision; use OVERRIDE."
             )
         final = agent_rec
+
+    if payload.edited_letter and claims_completed_refund(payload.edited_letter):
+        raise ReviewError(
+            422,
+            "The edited letter says the refund was processed or credited. No payment confirmation "
+            "exists: say the refund is authorised and that the bank makes the payment separately.",
+        )
 
     previous_code = dispute.reason_code
     if payload.reason_code:

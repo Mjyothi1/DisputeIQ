@@ -636,6 +636,12 @@ class Pipeline:
             )  # fmt: skip
             auto = rd.target is RouteTarget.AUTO_RESOLVE
             d.status = DisputeStatus.AUTO_RESOLVED if auto else DisputeStatus.NEEDS_HUMAN
+            if not auto:
+                # Awaiting a person: the letter must say "under review / recommended, not approved".
+                # The final letter is built from the reviewer's decision (app/services/letters.py).
+                state["letter"] = docs.build_letter(
+                    self._facts(state), docs.fill(docs.PENDING_BODY[rec], self._facts(state))
+                )
             self.session.add(
                 models.Decision(
                     dispute_id=d.id, recommendation=rec, rationale=state["rationale"],

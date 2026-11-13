@@ -12,6 +12,7 @@ from app.api import schemas as s
 from app.core.timeutil import as_utc, utcnow
 from app.db import models as m
 from app.db.enums import DisputeStatus
+from app.services.letters import letter_on_approval, reviewer_letter
 
 OPEN_STATUSES = (DisputeStatus.NEW, DisputeStatus.PROCESSING, DisputeStatus.NEEDS_HUMAN)
 REVIEWABLE = (DisputeStatus.NEEDS_HUMAN, DisputeStatus.AUTO_RESOLVED)
@@ -156,13 +157,15 @@ def _route_reasons(events: Sequence[m.AuditEvent]) -> list[str]:
     return []
 
 
-def _decision_out(dec: m.Decision | None) -> s.DecisionOut | None:
-    """Decision for the reviewer UI. Letters stored before the wording fix are shown corrected, so a
-    reviewer never approves a letter that says the refund was already paid (DB row unchanged)."""
+def _decision_out(dec: m.Decision | None, d: m.Dispute | None = None) -> s.DecisionOut | None:
+    """Decision for the reviewer UI. The letter is the one for the case's current state, rebuilt from
+    database facts when the stored draft is unsafe (see app/services/letters.py); DB rows unchanged."""
     if dec is None:
         return None
     out = s.DecisionOut.model_validate(dec)
-    if out.drafted_customer_letter:
+    if d is not None:
+        out.drafted_customer_letter = reviewer_letter(d, dec)
+    elif out.drafted_customer_letter:
         out.drafted_customer_letter = correct_legacy_refund_wording(out.drafted_customer_letter)
     return out
 
@@ -188,7 +191,8 @@ def case_detail(session: Session, d: m.Dispute, now: datetime | None = None) -> 
         deadline_at=d.deadline_at, days_to_deadline=days_until(d.deadline_at, now),
         filed_late=filed_late(d), created_at=d.created_at, transaction=txn_out,
         evidence=[s.EvidenceOut.model_validate(e) for e in sorted(d.evidence, key=lambda e: e.id)],
-        decision=_decision_out(dec),
+        decision=_decision_out(dec, d),
+        letter_on_approval=letter_on_approval(d, dec),
         reviews=[s.ReviewOut.model_validate(r) for r in sorted(d.reviews, key=lambda r: r.id)],
         route_reasons=_route_reasons(audit),
         can_review=d.status in REVIEWABLE and dec is not None,

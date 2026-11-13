@@ -142,7 +142,9 @@ def test_approved_refund_says_authorised_not_paid() -> None:
 def test_reviewer_edit_that_claims_payment_is_withheld_from_customer() -> None:
     st = customer_status(dispute(DisputeStatus.APPROVED, R.REFUND, (ReviewAction.EDIT, R.REFUND),
                                  edited="Good news: the amount has been credited to your account."))  # fmt: skip
-    assert st.code == "APPROVED" and st.letter is None
+    # the unsafe edit is never shown; the customer gets the safe final letter instead
+    assert st.code == "APPROVED" and st.letter and "has been authorised" in st.letter
+    assert not claims_completed_refund(st.letter) and "credited to your account" not in st.letter
     assert safe_letter(None) is None
 
 
@@ -180,7 +182,11 @@ def test_pipeline_replaces_a_model_letter_that_claims_payment(session, monkeypat
         dec = max(d.decisions, key=lambda x: x.id)
         assert dec.recommendation is Recommendation.REFUND
         assert not claims_completed_refund(dec.drafted_customer_letter), sc.key
-        assert "has been authorised" in (dec.drafted_customer_letter or "")
+        if sc.key == "high_value":  # pending: under review, recommended not approved
+            assert "currently under review" in (dec.drafted_customer_letter or "")
+            assert "recommended; it has not yet been approved" in (dec.drafted_customer_letter or "")
+        else:  # auto-resolved: authorised
+            assert "has been authorised" in (dec.drafted_customer_letter or "")
         drafted = next(e for e in d.audit_events if e.step == "draft_documents")
         assert "claims a completed refund" in (drafted.output_summary or "")
         if sc.key == "high_value":

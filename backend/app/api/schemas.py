@@ -176,6 +176,8 @@ class CaseDetail(BaseModel):
     reviews: list[ReviewOut]
     route_reasons: list[str]
     can_review: bool
+    # Pending cases only: the letter the customer receives if the reviewer approves as recommended.
+    letter_on_approval: str | None = None
     audit: list[AuditEventOut]
 
 

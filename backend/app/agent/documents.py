@@ -127,6 +127,7 @@ def fill(text: str, facts: DocFacts) -> str:
 
 def safe_body(llm_text: str | None, fallback: str, facts: DocFacts) -> tuple[str, list[str]]:
     """Return filled text, falling back to the template if the model text is unsafe."""
+    llm_text = clean_body(llm_text) if llm_text else llm_text
     problems = validate_llm_text(llm_text) if llm_text else ["empty"]
     return fill(fallback if problems else str(llm_text), facts), problems
 
@@ -137,8 +138,44 @@ def _subject(facts: DocFacts) -> str:
     return f"Card dispute {facts.case_id}: {facts.merchant}, {facts.amount}, {facts.txn_date}"
 
 
+_GREETING = re.compile(r"^\s*(?:dear|hi|hello|namaste)\b[^\n]*\n+", re.I)
+_SIGNOFF = re.compile(
+    r"\n+\s*(?:(?:yours\s+)?(?:sincerely|faithfully|truly)|(?:kind|best|warm)?\s*regards|thank you|thanks)"
+    r"\s*,?\s*(?:\n[^\n]*){0,3}\s*$",
+    re.I,
+)
+PENDING_BODY = {
+    Recommendation.REFUND: "Thank you for contacting us about the {amount} charge by {merchant} on {txn_date} (case {case_id}). Your dispute is currently under review. Our checks so far support your claim, and a refund has been recommended; it has not yet been approved. We will write to you again as soon as a decision is made. You do not need to do anything further.",
+    Recommendation.FILE_CHARGEBACK: "Thank you for contacting us about the {amount} charge by {merchant} on {txn_date} (case {case_id}). Your dispute is currently under review. Our checks so far support your claim, and raising a formal dispute with the merchant has been recommended; this has not yet been approved. We will write to you again as soon as a decision is made.",
+    Recommendation.REJECT: "Thank you for contacting us about the {amount} charge by {merchant} on {txn_date} (case {case_id}). Your dispute is currently under review by our team. We will write to you again as soon as a decision is made.",
+    Recommendation.NEED_MORE_INFO: "Thank you for contacting us (case {case_id}). Your dispute is currently under review. To help us identify the transaction, please reply with the merchant name, the amount and the date of the charge.",
+}  # fmt: skip
+
+
+def clean_body(text: str) -> str:
+    """Strip greetings and sign-offs a model may add: build_letter adds exactly one of each."""
+    text = text.strip()
+    while _GREETING.match(text):
+        text = _GREETING.sub("", text, count=1).strip()
+    return _SIGNOFF.sub("", text).strip()
+
+
+def greeting_name(customer_name: str) -> str:
+    """'Demo Customer - Meera Iyer' -> 'Meera'; 'Asha Rao' -> 'Asha'; '' -> 'Customer'."""
+    person = customer_name.split(" - ", 1)[-1].strip()
+    return person.split()[0] if person else "Customer"
+
+
+def is_clean_letter(text: str | None) -> bool:
+    """A letter that is safe to show: one greeting, no completed-payment claim."""
+    if not text or claims_completed_refund(text):
+        return False
+    return len(re.findall(r"(?im)^\s*dear\b", text)) <= 1 and "Dear Demo," not in text
+
+
 def build_letter(facts: DocFacts, body: str) -> str:
-    first = facts.customer_name.split()[0] if facts.customer_name else "Customer"
+    first = greeting_name(facts.customer_name)
+    body = clean_body(body)
     return (
         f"Date: {facts.received}\n"
         f"To: {facts.customer_name}\n"
