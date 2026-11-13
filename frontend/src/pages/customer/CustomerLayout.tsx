@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { CUSTOMER_AUTH_EVENT, getCustomerToken, setCustomerToken } from "@/api/auth";
 import { usePortalMe } from "@/api/portalHooks";
 import { Brand } from "@/components/Brand";
+import { DemoSwitchButton } from "@/components/DemoLoginPanel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -36,12 +37,13 @@ export function CustomerLayout() {
           </nav>
           <div className="ml-auto flex items-center gap-2">
             <span className="hidden text-sm text-muted-foreground sm:inline">{me.data?.name}</span>
+            <DemoSwitchButton to="reviewer" />
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
                 setCustomerToken("");
-                qc.removeQueries({ queryKey: ["portal"] });
+                qc.clear();
                 nav("/");
               }}
             >

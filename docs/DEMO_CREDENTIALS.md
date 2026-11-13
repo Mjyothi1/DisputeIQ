@@ -11,6 +11,16 @@ in the Render dashboard; share them with judges in person, not in the repo.
 | Reviewer portal | https://dispute-iq-beryl.vercel.app/reviewer |
 | API health | https://disputeiq-backend.onrender.com/health |
 
+## One-click demo sign-in (landing page, reviewer sign-in, customer sign-in)
+The **Demo sign-in** box offers *Sign in as priya (reviewer)* and *Sign in as Rohan Desai (customer)*.
+- The first time in a browser tab, type priya's reviewer key and the demo customer password into the box. They are
+  checked by the normal backend sign-in and remembered **only in that tab** (sessionStorage; gone when the tab
+  closes; "Forget demo credentials" clears them). Nothing secret is built into the app.
+- After that, each portal header has a **Switch to …** button. Switching signs into the other account through the
+  real login, then ends the previous session, so a tab is never signed in as both.
+- To hide the box on a non-demo deployment, build the frontend with `VITE_SHOW_DEMO_LOGIN=false`.
+- Rohan Desai's login: **rohan.desai@demo.disputeiq.test** (VISA •••• 5533, one DemoBank ATM ₹5,000 transaction).
+
 ## Reviewer (bank analyst)
 | Name | How to sign in |
 |-|-|

@@ -1,6 +1,7 @@
 import { ArrowRight, Briefcase, FileSearch, Scale, ShieldCheck, UserRound, Workflow } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Brand } from "@/components/Brand";
+import { DemoLoginPanel } from "@/components/DemoLoginPanel";
 
 const STEPS = [
   { icon: UserRound, title: "Customer reports a problem", text: "Pick the transaction, describe it in English or Hinglish." },
@@ -47,6 +48,7 @@ export function LandingPage() {
             cta="Enter reviewer portal"
           />
         </div>
+        <DemoLoginPanel className="mt-6" />
       </section>
 
       <section className="border-t border-border bg-surface">

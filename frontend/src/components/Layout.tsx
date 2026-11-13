@@ -4,6 +4,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { AUTH_EVENT, getReviewerKey, setReviewerKey } from "@/api/auth";
 import { useMe } from "@/api/hooks";
 import { Brand } from "@/components/Brand";
+import { DemoSwitchButton } from "@/components/DemoLoginPanel";
 import { LoginGate } from "@/components/LoginGate";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -73,6 +74,7 @@ export function Layout() {
             <span className="text-sm text-muted-foreground" data-testid="reviewer-name">
               {me.data ? `Signed in as ${me.data.name}` : "Signing in…"}
             </span>
+            <DemoSwitchButton to="customer" />
             <Button variant="outline" size="sm" onClick={() => setReviewerKey("")}>
               Sign out
             </Button>

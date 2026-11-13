@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { setCustomerToken } from "@/api/auth";
 import { ApiError, portal } from "@/api/client";
 import { Brand } from "@/components/Brand";
+import { DemoLoginPanel } from "@/components/DemoLoginPanel";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 
@@ -36,7 +37,7 @@ export function CustomerAuthPage({ mode }: { mode: "login" | "register" }) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background px-4 py-8">
       <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-panel border border-border bg-surface p-6 shadow-sm">
         <Brand to="/" sub="Customer portal" />
         <h1 className="font-serif text-2xl font-semibold">{register ? "Create your account" : "Sign in"}</h1>
@@ -82,6 +83,7 @@ export function CustomerAuthPage({ mode }: { mode: "login" | "register" }) {
           Bank staff? <Link className="text-primary hover:underline" to="/reviewer">Reviewer portal</Link>
         </p>
       </form>
+      {!register && <DemoLoginPanel className="w-full max-w-2xl" />}
     </div>
   );
 }
