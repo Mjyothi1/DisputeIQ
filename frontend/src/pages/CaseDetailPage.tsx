@@ -167,6 +167,23 @@ function Body({ detail }: { detail: CaseDetail }) {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0">
+          {aiDegraded(detail) && (
+            <div
+              role="alert"
+              data-testid="ai-degraded"
+              className="mb-5 flex gap-3 rounded-panel border border-fail/40 bg-fail/10 p-3 text-sm"
+            >
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-fail" aria-hidden />
+              <div>
+                <p className="font-medium">AI provider did not complete every step</p>
+                <p className="text-muted-foreground">
+                  {aiDegradedSummary(detail)} Deterministic fallbacks were used where the model
+                  failed; nothing was invented and the case was sent to a person. See the audit
+                  timeline for details.
+                </p>
+              </div>
+            </div>
+          )}
           {f?.injection_suspected && (
             <div
               role="alert"
@@ -233,9 +250,11 @@ function Body({ detail }: { detail: CaseDetail }) {
                   <p className="text-xs text-muted-foreground">
                     Analysis model: <span className="font-mono">{dec.model}</span>
                     {dec.model.startsWith("mock")
-                      ? " (offline rule-based fixture — not Gemini)"
+                      ? " (offline rule-based engine — not Gemini)"
                       : dec.model.startsWith("gemini")
-                        ? " (live Google Gemini)"
+                        ? aiDegraded(detail)
+                          ? " (live Google Gemini, with failed steps — see warning above)"
+                          : " (live Google Gemini)"
                         : ""}
                     {dec.prompt_version ? ` · prompt ${dec.prompt_version}` : ""}
                   </p>
@@ -300,4 +319,25 @@ function Body({ detail }: { detail: CaseDetail }) {
       </div>
     </div>
   );
+}
+
+
+const FAILURE_STEPS = new Set(["llm_provider_error", "pipeline_error"]);
+
+/** True when the AI provider failed or was retried for this case (from the audit trail). */
+export function aiDegraded(d: CaseDetail): boolean {
+  return (
+    d.audit.some((e) => FAILURE_STEPS.has(e.step)) ||
+    d.route_reasons.some((r) => /failed/i.test(r))
+  );
+}
+
+function aiDegradedSummary(d: CaseDetail): string {
+  const failed = d.route_reasons.filter((r) => /failed/i.test(r));
+  const retries = d.audit.filter((e) => e.step === "llm_retry").length;
+  const parts = [
+    failed.length ? failed.join(" ") : "",
+    retries ? `${retries} rate-limit/temporary retr${retries === 1 ? "y" : "ies"} recorded.` : "",
+  ].filter(Boolean);
+  return parts.join(" ") || "A provider error was recorded.";
 }

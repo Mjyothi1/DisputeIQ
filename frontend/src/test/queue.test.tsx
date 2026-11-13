@@ -47,3 +47,13 @@ describe("Queue", () => {
     await vi.waitFor(() => expect(all).toHaveAttribute("aria-selected", "true"));
   });
 });
+
+describe("AI transparency on the case page", () => {
+  it("flags provider failures and retries from the audit trail", async () => {
+    const { aiDegraded } = await import("@/pages/CaseDetailPage");
+    const base = { route_reasons: [] as string[], audit: [] as { step: string }[] };
+    expect(aiDegraded(base as never)).toBe(false);
+    expect(aiDegraded({ ...base, route_reasons: ["Claim extraction failed."] } as never)).toBe(true);
+    expect(aiDegraded({ ...base, audit: [{ step: "llm_provider_error" }] } as never)).toBe(true);
+  });
+});
