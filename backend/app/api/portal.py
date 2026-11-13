@@ -325,7 +325,7 @@ def my_dispute(dispute_id: int, p: Me, db: DB) -> ComplaintDetail:
         description=text,
         transaction_date=t.txn_time if t else None,
         letter=st.letter,
-        timeline=[TimelineItem(label=str(i["label"]), at=i["at"]) for i in timeline(d)],  # type: ignore[arg-type]
+        timeline=[TimelineItem(label=str(i["label"]), at=i["at"]) for i in timeline(d)],
     )
 
 

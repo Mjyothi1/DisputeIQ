@@ -81,7 +81,7 @@ def read_customer_token(
         want = _b64(hmac.new(secret, body.encode(), hashlib.sha256).digest())
         if not hmac.compare_digest(want, sig):
             return None
-        payload = json.loads(_unb64(body))
+        payload: dict[str, Any] = json.loads(_unb64(body))
     except (ValueError, json.JSONDecodeError):
         return None
     if payload.get("role") != "customer" or int(payload.get("exp", 0)) < (now or time.time()):
