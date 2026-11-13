@@ -32,7 +32,6 @@ class Settings(BaseSettings):
     smtp_username: str = ""
     smtp_app_password: str = ""
     smtp_from_email: str = ""
-    frontend_url: str = "https://dispute-iq-beryl.vercel.app"
     # Demo-only password for the six demo customers' portal logins (seeded with
     # BOOTSTRAP_DEMO_CUSTOMERS). Empty = no demo customer logins are created.
     demo_customer_password: str = ""
