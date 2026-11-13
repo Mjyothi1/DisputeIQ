@@ -11,7 +11,7 @@ import type {
   ReasonCode,
   ReviewRequest,
 } from "./types";
-import type { PortalComplaint, PortalComplaintDetail, PortalProfile, PortalTxn, PortalToken, PortalRegistration } from "./types";
+import type { PortalComplaint, PortalComplaintDetail, PortalProfile, PortalTxn, PortalToken } from "./types";
 import { getCustomerToken, getReviewerKey, setCustomerToken, setReviewerKey } from "./auth";
 
 export const API_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -105,16 +105,12 @@ export const portal = {
   login: (email: string, password: string) =>
     request<PortalToken>("/portal/login", { method: "POST", body: JSON.stringify({ email, password }) }, "none"),
   register: (name: string, email: string, password: string) =>
-    request<PortalRegistration>("/portal/register", { method: "POST", body: JSON.stringify({ name, email, password }) }, "none"),
-  verifyEmail: (email: string, code: string) =>
-    request<PortalToken>("/portal/verify-email", { method: "POST", body: JSON.stringify({ email, code }) }, "none"),
-  resendVerification: (email: string) =>
-    request<PortalRegistration>("/portal/resend-verification", { method: "POST", body: JSON.stringify({ email }) }, "none"),
+    request<PortalToken>("/portal/register", { method: "POST", body: JSON.stringify({ name, email, password }) }, "none"),
   me: () => request<PortalProfile>("/portal/me", undefined, "customer"),
   transactions: () => request<PortalTxn[]>("/portal/transactions", undefined, "customer"),
   categories: () => request<Record<string, string>>("/portal/categories", undefined, "none"),
   complaints: () => request<PortalComplaint[]>("/portal/disputes", undefined, "customer"),
   complaint: (id: number) => request<PortalComplaintDetail>(`/portal/disputes/${id}`, undefined, "customer"),
-  report: (body: { transaction_id: number; category: string; description: string }) =>
+  report: (body: { transaction_id?: number; merchant_name?: string; amount?: string; transaction_date?: string; card_last4?: string; category: string; description: string }) =>
     request<PortalComplaint>("/portal/disputes", { method: "POST", body: JSON.stringify(body) }, "customer"),
 };
