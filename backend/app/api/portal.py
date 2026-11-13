@@ -96,50 +96,6 @@ class TokenOut(BaseModel):
     role: str = "customer"
 
 
-class RegistrationOut(BaseModel):
-    message: str
-    email: str
-
-
-class VerifyEmailIn(BaseModel):
-    email: str = Field(min_length=3, max_length=160)
-    code: str = Field(min_length=6, max_length=6)
-
-    @field_validator("email")
-    @classmethod
-    def _email(cls, v: str) -> str:
-        return Credentials._email(v)
-
-    @field_validator("code")
-    @classmethod
-    def _code(cls, v: str) -> str:
-        if not v.isdigit():
-            raise ValueError("Enter the 6-digit code.")
-        return v
-
-
-def _new_verification_code() -> str:
-    return f"{secrets.randbelow(1_000_000):06d}"
-
-
-def _code_hash(code: str, secret: bytes) -> str:
-    return hmac.new(secret, code.encode(), hashlib.sha256).hexdigest()
-
-
-@router.post("/register", response_model=TokenOut, status_code=201, summary="Create a customer account")
-def register(body: Registration, db: DB, settings: Annotated[Settings, Depends(get_settings)]) -> TokenOut:
-    secret = _secret(settings)
-    login_limiter.check(f"reg:{body.email}")
-    if db.scalar(select(m.CustomerAccount.id).where(m.CustomerAccount.email == body.email)):
-        raise HTTPException(409, "An account with this email already exists.")
-    cust = m.Customer(name=body.name.strip(), email=body.email, segment="RETAIL")
-    db.add(cust)
-    db.flush()
-    acct = m.CustomerAccount(customer_id=cust.id, email=body.email, password_hash=hash_password(body.password), email_verified=True)
-    db.add(acct)
-    db.commit()
-    return TokenOut(token=issue_customer_token(secret, acct.id, cust.id), name=cust.name)
-
 @router.post("/login", response_model=TokenOut, summary="Customer sign-in")
 def login(
     body: Credentials, db: DB, settings: Annotated[Settings, Depends(get_settings)]
@@ -157,8 +113,6 @@ def login(
         raise HTTPException(401, "Email or password is incorrect.")
     if not verify_password(body.password, acct.password_hash):
         raise HTTPException(401, "Email or password is incorrect.")
-    if not acct.email_verified:
-        raise HTTPException(403, "Please verify your email address before signing in.")
     return TokenOut(
         token=issue_customer_token(secret, acct.id, acct.customer_id), name=acct.customer.name
     )
