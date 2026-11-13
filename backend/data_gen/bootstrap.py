@@ -92,6 +92,44 @@ def ensure_demo_data(
     return out
 
 
+def ensure_demo_customers_if_enabled(
+    factory: sessionmaker[Session] | None = None, settings: Settings | None = None
+) -> dict[str, int] | None:
+    """Add the six demo customers when ``BOOTSTRAP_DEMO_CUSTOMERS`` is on; otherwise do nothing.
+
+    Reuses :func:`data_gen.demo_customers.ensure_demo_customers` (additive, idempotent, matched by
+    name; never edits or deletes rows and never creates disputes).
+    """
+    factory = factory or get_session_factory()
+    settings = settings or get_settings()
+    if not settings.bootstrap_demo_customers:
+        return None
+    from data_gen.demo_customers import ensure_demo_customers
+
+    with factory() as s:
+        if s.get_bind().dialect.name == "sqlite":
+            init_db(s.get_bind())  # type: ignore[arg-type]
+        if not (s.scalar(select(func.count()).select_from(models.Customer)) or 0):
+            logger.warning(
+                "demo customers added to an EMPTY database: the base demo dataset will not seed "
+                "afterwards (it only seeds an empty database). Enable BOOTSTRAP_DEMO_DATA first "
+                "if you want the full queue."
+            )
+        added = ensure_demo_customers(s)
+    logger.info("demo customers ready", extra=added)
+    return added
+
+
+def run_startup_bootstrap(
+    factory: sessionmaker[Session] | None = None, settings: Settings | None = None
+) -> None:
+    """Startup order matters: the base dataset first (it needs an empty DB), then demo customers."""
+    settings = settings or get_settings()
+    if settings.bootstrap_demo_data:
+        ensure_demo_data(factory, settings)
+    ensure_demo_customers_if_enabled(factory, settings)
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     get_engine()

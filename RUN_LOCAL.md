@@ -50,6 +50,7 @@ Open http://localhost:5173 and sign in with the reviewer key from `REVIEWER_ACCO
 
 * **Default behavior:** demo bootstrap is disabled. The backend will not automatically populate an empty database.
 * **Optional fresh demo setup:** for a brand-new, empty, isolated demo database only, set `BOOTSTRAP_DEMO_DATA=true` in `.env` before starting the backend. Bootstrap runs in the background using the offline rule engine, without consuming Gemini quota.
+* **Demo customers:** set `BOOTSTRAP_DEMO_CUSTOMERS=true` to add the six isolated demo customers at startup (same as `python -m data_gen.demo_customers`). Additive and idempotent; set it back to `false` after one run. On a brand-new database enable `BOOTSTRAP_DEMO_DATA` too: the base dataset only seeds an *empty* database, and the flags run in the right order (base first).
 * **Existing database:** leave `BOOTSTRAP_DEMO_DATA=false`. Existing complaints and reviews must be preserved.
 * The backend uses `backend/disputeiq.db`, regardless of the folder from which you start it.
 * Never delete an existing database just to refresh demo data. Back it up and use a separate empty demo database if a fresh dataset is required.

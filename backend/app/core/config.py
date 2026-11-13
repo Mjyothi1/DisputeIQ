@@ -48,6 +48,10 @@ class Settings(BaseSettings):
 
     # Fill an EMPTY database with the synthetic demo dataset on startup (never touches existing data).
     bootstrap_demo_data: bool = False
+    # Opt-in, additive: add the six isolated demo customers (data_gen/demo_customers.py) on startup.
+    # Matched by name, so it is idempotent and never edits or deletes existing rows. Turn it off
+    # again after the first successful run.
+    bootstrap_demo_customers: bool = False
 
     langfuse_enabled: bool = False
     langfuse_public_key: str = ""

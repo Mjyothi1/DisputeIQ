@@ -19,9 +19,9 @@ def _bootstrap_in_background() -> None:
 
     def work() -> None:
         try:
-            from data_gen.bootstrap import ensure_demo_data
+            from data_gen.bootstrap import run_startup_bootstrap
 
-            ensure_demo_data()
+            run_startup_bootstrap()
         except Exception:
             logging.getLogger(__name__).exception("demo data bootstrap failed")
 
@@ -30,7 +30,8 @@ def _bootstrap_in_background() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    if get_settings().bootstrap_demo_data:
+    settings = get_settings()
+    if settings.bootstrap_demo_data or settings.bootstrap_demo_customers:
         _bootstrap_in_background()
     yield
 
