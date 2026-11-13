@@ -204,7 +204,9 @@ enforced by the API. Guides: [customer](docs/CUSTOMER_DEMO_GUIDE.md) · [reviewe
 [credentials](docs/DEMO_CREDENTIALS.md) · [verification](docs/FINAL_VERIFICATION.md).
 
 Customer API (`/portal/*`, customer session token): `register`, `login`, `me`, `transactions`, `disputes` (create/list/get
-own), `categories`. New env vars: `AUTH_SECRET` (session signing), `DEMO_CUSTOMER_PASSWORD` (demo logins).
+own), `categories`. New env vars: `AUTH_SECRET` (session signing), `DEMO_CUSTOMER_PASSWORD` (demo logins), and on the frontend
+`VITE_SHOW_DEMO_LOGIN=false` to hide the one-click demo sign-in box (shown by default; it uses the real logins and
+stores nothing in the build).
 
 Demo kit: [slides](docs/DisputeIQ_Zeta_Innovate_2026.pptx) · [speaking notes](docs/JUDGE_PRESENTATION_SCRIPT.md) · [live demo script](docs/LIVE_DEMO_SCRIPT.md) · [fallback plan](docs/DEMO_FALLBACK_PLAN.md) · [verification status](docs/VERIFICATION.md).
 

@@ -4,6 +4,7 @@ import { setReviewerKey } from "@/api/auth";
 import { api, ApiError } from "@/api/client";
 import { Link } from "react-router-dom";
 import { Brand } from "@/components/Brand";
+import { DemoLoginPanel } from "@/components/DemoLoginPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -37,7 +38,7 @@ export function LoginGate() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 px-4 py-8">
       <form onSubmit={signIn} className="w-full max-w-sm space-y-4 rounded-card border border-border bg-surface p-6">
         <Brand to="/" sub="Reviewer portal" />
         <h1 className="font-serif text-2xl font-semibold">Reviewer sign-in</h1>
@@ -67,6 +68,7 @@ export function LoginGate() {
           A bank customer? <Link to="/customer/login" className="text-primary hover:underline">Go to the customer portal</Link>
         </p>
       </form>
+      <DemoLoginPanel className="w-full max-w-2xl" />
     </div>
   );
 }

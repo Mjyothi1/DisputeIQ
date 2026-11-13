@@ -63,8 +63,8 @@ describe("Customer portal", () => {
     });
     at("/customer/login");
     await userEvent.type(screen.getByLabelText(/email/i), "meera.iyer@demo.disputeiq.test");
-    await userEvent.type(screen.getByLabelText(/password/i), "demo-pass-2026");
-    await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    await userEvent.type(screen.getByLabelText("Password"), "demo-pass-2026");
+    await userEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
     expect(await screen.findByRole("heading", { name: /welcome, meera/i })).toBeInTheDocument();
     expect(screen.getByText("VISA •••• 4021")).toBeInTheDocument();
     expect(getCustomerToken()).toBe("cust.abc.def");

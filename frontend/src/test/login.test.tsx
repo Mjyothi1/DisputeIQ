@@ -28,7 +28,7 @@ describe("LoginGate", () => {
     );
     renderGate();
     await userEvent.type(screen.getByLabelText(/reviewer access key/i), "demo-key-12345");
-    await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
     await vi.waitFor(() => expect(getReviewerKey()).toBe("demo-key-12345"));
   });
 
@@ -39,7 +39,7 @@ describe("LoginGate", () => {
     );
     renderGate();
     await userEvent.type(screen.getByLabelText(/reviewer access key/i), "wrong-key-1234");
-    await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/not recognised/i);
     expect(getReviewerKey()).toBe("");
   });
