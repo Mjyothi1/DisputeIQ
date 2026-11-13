@@ -69,7 +69,7 @@ function Message({ title, body }: { title: string; body?: string }) {
       <p className="font-medium">{title}</p>
       {body && <p className="mt-1 text-sm text-muted-foreground">{body}</p>}
       <Button asChild variant="outline" className="mt-4">
-        <Link to="/">Back to queue</Link>
+        <Link to="/reviewer">Back to queue</Link>
       </Button>
     </div>
   );
@@ -98,7 +98,7 @@ function Body({ detail }: { detail: CaseDetail }) {
   return (
     <div>
       <Link
-        to="/"
+        to="/reviewer"
         className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" aria-hidden /> Queue

@@ -63,7 +63,7 @@ export function SubmitPage() {
       toast.success(
         `Complaint ${caseRef(res.dispute_id)} processed: ${res.status.replace(/_/g, " ").toLowerCase()}. The case page shows which engine analysed it.`,
       );
-      nav(`/cases/${res.dispute_id}`);
+      nav(`/reviewer/cases/${res.dispute_id}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not submit the complaint.");
       setBusy(false);

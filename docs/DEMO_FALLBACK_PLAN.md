@@ -10,6 +10,7 @@ Rule: **never describe offline output as Gemini output.** The case page and the 
 | A transaction doesn't appear | Submit page lists the selected customer's own transactions with ids | Check the selected-customer box shows the right name and •••• last4. If a demo customer has no transactions, use a spare demo customer; production data must be checked separately (see VERIFICATION.md). |
 | Duplicate routed to human instead of auto-resolved | Route reasons list e.g. "Confidence 0.8 below threshold 0.85" | "Correct: below threshold we escalate. Confidence is capped by evidence quality, not by what the customer writes." |
 | Demo customer already used | Second complaint is flagged as duplicate / frequent disputer | Use a spare customer (Isha, Arjun). Don't reuse customers between rehearsal and the live run on the same database. |
+| Customer can't sign in | "Email or password is incorrect" or "not configured" | Check `DEMO_CUSTOMER_PASSWORD` and `BOOTSTRAP_DEMO_CUSTOMERS=true` are set on Render (accounts are created at startup); `AUTH_SECRET` or `REVIEWER_ACCOUNTS` must be set. |
 | Production frontend down | Vercel page fails | Run locally (`RUN_LOCAL.md`) with `LLM_PROVIDER=gemini` if a key is available, otherwise `LLM_PROVIDER=mock` and say "offline rules engine, not Gemini". |
 | Unexpected live result | Anything not in LIVE_DEMO_SCRIPT.md | Open the audit timeline and explain what the system did and why; that transparency is the point. Don't retry repeatedly on stage. |
 

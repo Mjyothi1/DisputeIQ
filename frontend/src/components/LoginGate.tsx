@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { setReviewerKey } from "@/api/auth";
 import { api, ApiError } from "@/api/client";
+import { Link } from "react-router-dom";
+import { Brand } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -37,7 +39,8 @@ export function LoginGate() {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <form onSubmit={signIn} className="w-full max-w-sm space-y-4 rounded-card border border-border bg-surface p-6">
-        <h1 className="font-serif text-2xl font-semibold">DisputeIQ reviewer sign-in</h1>
+        <Brand to="/" sub="Reviewer portal" />
+        <h1 className="font-serif text-2xl font-semibold">Reviewer sign-in</h1>
         <p className="text-sm text-muted-foreground">
           Case data and decisions are restricted to authorised reviewers. Enter the access key
           issued for you by the demo administrator.
@@ -60,6 +63,9 @@ export function LoginGate() {
         <Button type="submit" className="w-full" disabled={busy || key.trim().length < 8}>
           {busy ? "Checking…" : "Sign in"}
         </Button>
+        <p className="text-center text-sm text-muted-foreground">
+          A bank customer? <Link to="/customer/login" className="text-primary hover:underline">Go to the customer portal</Link>
+        </p>
       </form>
     </div>
   );

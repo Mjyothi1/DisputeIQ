@@ -287,7 +287,7 @@ function Table({
             {items.map((d) => (
               <tr key={d.id} className="hover:bg-accent/60">
                 <td className="px-3 py-3">
-                  <Link to={`/cases/${d.id}`} className="font-medium text-primary hover:underline">
+                  <Link to={`/reviewer/cases/${d.id}`} className="font-medium text-primary hover:underline">
                     {caseRef(d.id)}
                   </Link>
                   <div className="text-muted-foreground">{d.customer_name}</div>
@@ -324,7 +324,7 @@ function Table({
         {items.map((d) => (
           <li key={d.id}>
             <Link
-              to={`/cases/${d.id}`}
+              to={`/reviewer/cases/${d.id}`}
               className="block rounded-panel border border-border bg-surface p-3"
             >
               <div className="flex items-start justify-between gap-2">

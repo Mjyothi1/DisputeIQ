@@ -17,6 +17,10 @@ services:
         value: production
       - key: REVIEWER_ACCOUNTS    # "name=key,..." prototype reviewer keys; without it the API refuses case access
         sync: false
+      - key: AUTH_SECRET          # signs customer-portal sessions (recommended)
+        sync: false
+      - key: DEMO_CUSTOMER_PASSWORD  # demo-only; enables the six demo customer logins
+        sync: false
       - key: LLM_PROVIDER
         value: gemini            # default: Google Gemini Flash free tier (never silently falls back to mock)
       - key: GEMINI_API_KEY

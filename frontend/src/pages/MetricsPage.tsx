@@ -117,7 +117,7 @@ export function MetricsPage() {
             label="Auto-resolution rate"
             value={pct(m.auto_resolution_rate)}
             hint={`${m.auto_resolved} cases`}
-            to="/?preset=auto"
+            to="/reviewer?preset=auto"
           />
           <Stat
             label="Avg processing time"
@@ -132,13 +132,13 @@ export function MetricsPage() {
             label="Open past deadline"
             value={`${m.deadline_violations}`}
             hint={`${m.deadline_at_risk} due within 7 days`}
-            to="/?preset=review"
+            to="/reviewer?preset=review"
           />
           <Stat
             label="Analyst override rate"
             value={pct(m.override_rate)}
             hint={`${m.reviewed} reviewed`}
-            to="/?preset=closed"
+            to="/reviewer?preset=closed"
           />
         </dl>
       </Panel>
@@ -170,7 +170,7 @@ export function MetricsPage() {
         <Panel
           title="Agent recommendations"
           action={
-            <Link to="/?preset=all" className="text-xs text-primary hover:underline">
+            <Link to="/reviewer?preset=all" className="text-xs text-primary hover:underline">
               View all in queue &rarr;
             </Link>
           }
@@ -192,7 +192,7 @@ export function MetricsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <Link
-                          to={`/cases/${r.dispute_id}`}
+                          to={`/reviewer/cases/${r.dispute_id}`}
                           className="font-medium text-primary hover:underline"
                         >
                           {r.case_ref}
@@ -226,7 +226,7 @@ export function MetricsPage() {
         <Panel
           title="Flags raised"
           action={
-            <Link to="/?preset=review" className="text-xs text-primary hover:underline">
+            <Link to="/reviewer?preset=review" className="text-xs text-primary hover:underline">
               Inspect in queue &rarr;
             </Link>
           }
@@ -236,19 +236,19 @@ export function MetricsPage() {
               label="Possible friendly fraud"
               value={`${m.friendly_fraud_flagged}`}
               hint="Strongly authenticated, sent to a person"
-              to="/?preset=review&q=fraud"
+              to="/reviewer?preset=review&q=fraud"
             />
             <Stat
               label="Prompt injection detected"
               value={`${m.injection_flagged}`}
               hint="Text ignored, flagged to analyst"
-              to="/?preset=all&q=injection"
+              to="/reviewer?preset=all&q=injection"
             />
             <Stat
               label="Suspicious transactions"
               value={`${m.suspicious_flagged ?? m.friendly_fraud_flagged}`}
               hint="High-risk and unauthorized claims"
-              to="/?preset=all&q=fraud"
+              to="/reviewer?preset=all&q=fraud"
             />
             {m.by_channel && (
               <Stat
