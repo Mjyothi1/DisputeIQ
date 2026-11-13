@@ -142,11 +142,6 @@ def register(
     login_limiter.check(f"reg:{body.email}")
     if db.scalar(select(m.CustomerAccount.id).where(m.CustomerAccount.email == body.email)):
         raise HTTPException(409, "An account with this email already exists.")
-    if not settings.smtp_username or not settings.smtp_app_password:
-        raise HTTPException(
-            503,
-            "Email verification is temporarily unavailable. Please try again later.",
-        )
     code = _new_verification_code()
     cust = m.Customer(name=body.name.strip(), email=body.email, segment="RETAIL")
     db.add(cust)
@@ -207,6 +202,47 @@ def verify_email(
     db.commit()
     return TokenOut(
         token=issue_customer_token(secret, acct.id, acct.customer_id), name=acct.customer.name
+    )
+
+
+class ResendVerificationIn(BaseModel):
+    email: str = Field(min_length=3, max_length=160)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, v: str) -> str:
+        return Credentials._email(v)
+
+
+@router.post("/resend-verification", response_model=RegistrationOut)
+def resend_verification(
+    body: ResendVerificationIn, db: DB, settings: Annotated[Settings, Depends(get_settings)]
+) -> RegistrationOut:
+    login_limiter.check(f"resend:{body.email}")
+    acct = db.scalars(
+        select(m.CustomerAccount).where(m.CustomerAccount.email == body.email)
+    ).first()
+    # Do not reveal whether an email is registered or already verified.
+    if acct is None or acct.email_verified:
+        return RegistrationOut(
+            message="If the account needs verification, a new code has been sent.",
+            email=body.email,
+        )
+    code = _new_verification_code()
+    acct.email_verification_code_hash = _code_hash(code)
+    acct.email_verification_expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+    acct.email_verification_attempts = 0
+    try:
+        send_customer_verification_code(settings, body.email, code)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            503, "We could not send the verification email. Please try again later."
+        ) from exc
+    return RegistrationOut(
+        message="A new verification code has been sent to your email address.",
+        email=body.email,
     )
 
 
