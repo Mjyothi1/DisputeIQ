@@ -34,19 +34,57 @@ def test_demo_scenarios_produce_documented_outcomes_with_offline_engine(session:
     ensure_demo_customers(session)
     names = list(session.scalars(select(models.Merchant.name)))
     got: dict[str, DisputeStatus] = {}
+    codes: dict[str, str | None] = {}
+    recs: dict[str, str | None] = {}
+    flagged: dict[str, bool] = {}
     for sc in SCENARIOS:
         cust = session.scalars(select(models.Customer).where(models.Customer.name == sc.customer)).one()
         d = models.Dispute(customer_id=cust.id, channel=DisputeChannel.FORM, raw_text=sc.complaint)
         session.add(d)
         session.commit()
-        Pipeline(session, MockLLM(names), NullRetriever()).run(d.id)
+        r = Pipeline(session, MockLLM(names), NullRetriever()).run(d.id)
         session.refresh(d)
         got[sc.key] = d.status
+        codes[sc.key], flagged[sc.key] = r.reason_code, r.injection_suspected
+        recs[sc.key] = r.recommendation.value if r.recommendation else None
+        # the case must be matched to this customer's own transaction
+        assert d.matched_txn is not None and d.matched_txn.card.customer_id == cust.id, sc.key
     assert got["duplicate"] is DisputeStatus.AUTO_RESOLVED
     assert got["atm"] is DisputeStatus.AUTO_RESOLVED
     assert got["friendly_fraud"] is DisputeStatus.NEEDS_HUMAN
     assert got["high_value"] is DisputeStatus.NEEDS_HUMAN
     assert got["injection"] is DisputeStatus.NEEDS_HUMAN
+    # all six documented scenarios (offline engine; says nothing about Gemini)
+    assert codes == {
+        "duplicate": "DUPLICATE_CHARGE", "atm": "ATM_CASH_NOT_DISPENSED",
+        "friendly_fraud": "FRAUD_NOT_AUTHORISED", "high_value": "DUPLICATE_CHARGE",
+        "injection": "DUPLICATE_CHARGE", "spare_duplicate": "DUPLICATE_CHARGE",
+    }
+    assert recs["friendly_fraud"] == "REJECT" and recs["high_value"] == "REFUND"
+    assert got["spare_duplicate"] is DisputeStatus.AUTO_RESOLVED  # Isha: Hinglish, same rules as English
+    assert flagged["injection"] and not any(v for k, v in flagged.items() if k != "injection")
+
+
+def test_repeat_demo_complaint_hits_duplicate_guard(session: Session) -> None:
+    """Demo step 7: resubmitting Meera's complaint never yields a second automatic refund."""
+    from app.agent.mock_llm import MockLLM
+    from app.agent.pipeline import Pipeline
+    from app.db.enums import DisputeChannel, DisputeStatus
+    from app.services.retrieval import NullRetriever
+
+    ensure_demo_customers(session)
+    sc = SCENARIOS[0]
+    cust = session.scalars(select(models.Customer).where(models.Customer.name == sc.customer)).one()
+    names = list(session.scalars(select(models.Merchant.name)))
+    out = []
+    for _ in range(2):
+        d = models.Dispute(customer_id=cust.id, channel=DisputeChannel.FORM, raw_text=sc.complaint)
+        session.add(d)
+        session.commit()
+        out.append(Pipeline(session, MockLLM(names), NullRetriever()).run(d.id))
+    assert out[0].status is DisputeStatus.AUTO_RESOLVED
+    assert out[1].status is DisputeStatus.NEEDS_HUMAN
+    assert any("already has another dispute" in r for r in out[1].route_reasons)
 
 
 # ---- API-level regression: demo customers' transactions are reachable and correctly owned ------

@@ -19,6 +19,7 @@ export interface DisputeSummary {
   days_to_deadline: number | null;
   filed_late: boolean;
   created_at: string;
+  model?: string | null;
 }
 
 export interface DisputePage {
