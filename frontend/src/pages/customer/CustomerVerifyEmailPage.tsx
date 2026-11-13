@@ -14,6 +14,7 @@ export function CustomerVerifyEmailPage() {
   const [email, setEmail] = useState(params.get("email") ?? "");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
@@ -47,9 +48,11 @@ export function CustomerVerifyEmailPage() {
           <Input id="verification-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} required />
         </div>
         {error && <p role="alert" className="text-sm text-fail">{error}</p>}
+        {notice && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
         <Button type="submit" className="w-full" disabled={busy || code.length !== 6 || !email.trim()}>
           {busy ? "Verifying…" : "Verify email"}
         </Button>
+        <Button type="button" variant="outline" className="w-full" disabled={busy || !email.trim()} onClick={resend}>Resend code</Button>
         <p className="text-center text-sm text-muted-foreground"><Link className="text-primary hover:underline" to="/customer/login">Back to sign in</Link></p>
       </form>
     </div>
