@@ -175,6 +175,33 @@ def test_customer_id_in_body_is_ignored(w: World) -> None:
         assert d is not None and d.customer_id == meera_id
 
 
+def test_customer_can_submit_manual_transaction_without_history(w: World) -> None:
+    c = w.anon.post("/portal/register", json={"email": "manual@example.com", "password": "longenough1", "name": "Manual User"})
+    assert c.status_code == 201
+    customer = TestClient(app, headers={"Authorization": f"Bearer {c.json()['token']}"})
+    assert customer.get("/portal/transactions").json() == []
+    response = customer.post("/portal/disputes", json={
+        "merchant_name": "Local Store", "amount": "1250.50", "transaction_date": "2026-11-10T00:00:00Z",
+        "card_last4": "1234", "category": "OTHER", "description": "I do not recognise this transaction"
+    })
+    assert response.status_code == 202, response.text
+    with Session(w.engine) as db:
+        dispute = db.get(m.Dispute, response.json()["id"])
+        assert dispute is not None
+        assert dispute.customer_txn_id is None
+        assert dispute.customer_merchant == "Local Store"
+        assert str(dispute.customer_amount) == "1250.50"
+        assert dispute.customer_card_last4 == "1234"
+        assert "NOT BANK-VERIFIED" in dispute.raw_text
+        assert "Verify against issuer records" in dispute.raw_text
+
+
+def test_manual_transaction_requires_merchant_amount_and_date(w: World) -> None:
+    c = w.anon.post("/portal/register", json={"email": "incomplete@example.com", "password": "longenough1", "name": "Incomplete User"})
+    customer = TestClient(app, headers={"Authorization": f"Bearer {c.json()['token']}"})
+    response = customer.post("/portal/disputes", json={"merchant_name": "Store", "category": "OTHER", "description": "This transaction is incorrect"})
+    assert response.status_code == 422
+
 def test_customer_cannot_read_another_customers_complaint(w: World) -> None:
     meera, rohan = w.login(0), w.login(1)
     t = w.txns(meera)[0]["id"]
