@@ -198,5 +198,7 @@ alternates. Langfuse export is optional and tested against a local stub when dis
 * Docker Compose and deployment configs were not executed in the build sandbox (Postgres and
 pgvector were verified locally outside Docker).
 
+Demo kit: [slides](docs/DisputeIQ_Zeta_Innovate_2026.pptx) · [speaking notes](docs/JUDGE_PRESENTATION_SCRIPT.md) · [live demo script](docs/LIVE_DEMO_SCRIPT.md) · [fallback plan](docs/DEMO_FALLBACK_PLAN.md) · [verification status](docs/VERIFICATION.md).
+
 Design decisions are logged in [DECISIONS.md](DECISIONS.md); API in [docs/api.md](docs/api.md);
 taxonomy in [docs/reason-codes.md](docs/reason-codes.md).
