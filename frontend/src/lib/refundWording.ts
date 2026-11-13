@@ -29,7 +29,7 @@ const REC_WORD: Record<string, string> = {
 export function letterStatusNotice(status: string, recommendation: string | null | undefined): string {
   const rec = REC_WORD[recommendation ?? ""] ?? "Outcome";
   if (status === "NEEDS_HUMAN" || status === "NEW" || status === "PROCESSING")
-    return `Draft only, not sent. ${rec} is recommended, not approved. The customer receives this letter only if a reviewer approves it; until then they see "under review".`;
+    return `Draft only, not sent. ${rec} is recommended, not approved. The customer receives this letter only if you approve; until then they have the "under review" letter above.`;
   if (status === "AUTO_RESOLVED")
     return recommendation === "REFUND"
       ? "Sent on automatic resolution: refund authorised. The bank makes the payment separately; no payment confirmation is recorded here."

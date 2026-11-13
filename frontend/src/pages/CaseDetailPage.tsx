@@ -85,7 +85,11 @@ function Body({ detail }: { detail: CaseDetail }) {
   const toast = useToast();
   const dec = detail.decision;
   const finished = detail.reviews[detail.reviews.length - 1];
-  const origLetter = dec?.drafted_customer_letter ?? "";
+  const pending = ["NEW", "PROCESSING", "NEEDS_HUMAN"].includes(detail.status);
+  // Pending: the customer currently has the "under review" letter; the editable draft is the letter
+  // that will be sent IF the reviewer approves. Closed: the letter that was actually sent.
+  const currentLetter = dec?.drafted_customer_letter ?? "";
+  const origLetter = (pending ? detail.letter_on_approval : null) ?? currentLetter;
   const origFiling = dec?.drafted_chargeback_filing ?? "";
   // After a review, show what was actually approved (the analyst's edits, if any).
   const startLetter = finished?.edited_letter ?? origLetter;
@@ -283,9 +287,20 @@ function Body({ detail }: { detail: CaseDetail }) {
           {dec && (
             <Section title="Drafts">
               <div className="space-y-5">
+                {pending && currentLetter && (
+                  <div data-testid="current-letter">
+                    <p className="mb-2 text-sm font-medium">Current letter to the customer (case under review)</p>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      The refund or chargeback is only recommended at this stage, not approved.
+                    </p>
+                    <pre className="paper whitespace-pre-wrap rounded-control border border-border p-5 font-sans text-[15px] leading-relaxed">
+                      {currentLetter}
+                    </pre>
+                  </div>
+                )}
                 <DraftEditor
                   id="letter"
-                  title="Letter to the customer"
+                  title={pending ? "Letter sent if you approve" : "Letter to the customer"}
                   original={origLetter}
                   value={letter}
                   onChange={setLetter}

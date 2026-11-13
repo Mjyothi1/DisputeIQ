@@ -42,3 +42,20 @@ without a secret, customer view excludes notes/evidence/model/confidence, review
 - **Tests:** `backend/tests/test_refund_wording.py` covers every backend status and checks that no notes or rationale
   leak. `frontend/src/test/refundWording.test.tsx` covers the guard (same cases as the backend), the reviewer
   notices, the warning and the customer pages.
+
+## Letter content fix (production case DIQ-000314)
+- **Problem:** a repeat Meera complaint (correctly held for review by the duplicate guard) had a stored Gemini draft
+  saying "We have processed a refund", with repeated greetings. PR #5 flagged it, but still displayed the unsafe text.
+  The greeting also used the first word of the name ("Dear Demo," for "Demo Customer - Meera Iyer").
+- **Fix (`backend/app/services/letters.py`):** every displayed letter is built from database facts for the case's
+  current state:
+  - pending → "under review; refund recommended, not yet approved";
+  - auto-resolved → the stored letter only if clean, otherwise the template;
+  - reviewed → the letter for the reviewer's final decision ("refund authorised; the bank makes the payment
+    separately"), or the reviewer's edit if clean.
+
+  New cases routed to review store the pending letter. Model text has greetings and sign-offs stripped before the
+  letter is assembled. Reviewer edits claiming payment are refused with 422. Stored rows are never rewritten.
+- **Tests:** `backend/tests/test_letters.py` reproduces DIQ-000314 end to end (reviewer letter, approval letter,
+  customer view, approve flow, unsafe auto-resolved letter, greetings). `frontend/src/test/caseLetters.test.tsx` covers
+  the reviewer page.

@@ -123,6 +123,8 @@ export interface CaseDetail {
   reviews: Review[];
   route_reasons: string[];
   can_review: boolean;
+  /** Pending cases: the letter sent if the reviewer approves as recommended. */
+  letter_on_approval?: string | null;
   audit: AuditEvent[];
 }
 

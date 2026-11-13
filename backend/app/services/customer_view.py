@@ -10,7 +10,8 @@ from datetime import datetime
 
 from app.agent.documents import claims_completed_refund, correct_legacy_refund_wording
 from app.db import models as m
-from app.db.enums import DisputeStatus, Recommendation, ReviewAction
+from app.db.enums import DisputeStatus, Recommendation
+from app.services.letters import customer_letter
 
 CATEGORIES: dict[str, str] = {
     "CHARGED_TWICE": "Charged twice",
@@ -98,14 +99,11 @@ def customer_status(d: m.Dispute) -> CustomerStatus:
         return CustomerStatus("UNDER_REVIEW", "Under review", msg, None, None)
     if d.status is DisputeStatus.AUTO_RESOLVED and dec is not None:
         code, label, msg = _outcome(dec.recommendation)
-        return CustomerStatus(code, label, msg, safe_letter(dec.drafted_customer_letter), dec.created_at)
+        return CustomerStatus(code, label, msg, customer_letter(d, dec), dec.created_at)
     if rev is not None:
         code, label, msg = _outcome(rev.final_decision)
-        letter = None
-        # The drafted letter matches only when the reviewer kept the agent's decision.
-        if rev.action in (ReviewAction.APPROVE, ReviewAction.EDIT) and dec is not None:
-            letter = safe_letter(rev.edited_letter or dec.drafted_customer_letter)
-        return CustomerStatus(code, label, msg, letter, rev.created_at)
+        # Built for the reviewer's FINAL decision (also after an override), never the agent's draft.
+        return CustomerStatus(code, label, msg, customer_letter(d, dec), rev.created_at)
     return CustomerStatus(
         "UNDER_REVIEW", "Under review", "Your case is being reviewed.", None, None
     )
