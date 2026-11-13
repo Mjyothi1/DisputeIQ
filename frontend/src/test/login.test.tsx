@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import { getReviewerKey } from "@/api/auth";
 import { api } from "@/api/client";
@@ -10,7 +11,9 @@ function renderGate() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <LoginGate />
+      <MemoryRouter>
+        <LoginGate />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }

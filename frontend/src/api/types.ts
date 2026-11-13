@@ -239,3 +239,43 @@ export interface Metrics {
   llm_provider_note: string | null;
   evaluation: EvalHeadline | null;
 }
+
+// ---- customer portal ----
+export interface PortalToken {
+  token: string;
+  name: string;
+  role: "customer";
+}
+export interface PortalProfile {
+  name: string;
+  email: string;
+  cards: { network: string; last4: string; masked: string }[];
+}
+export interface PortalTxn {
+  id: number;
+  merchant_name: string;
+  amount: string;
+  currency: string;
+  txn_time: string;
+  card_last4: string;
+  channel: string;
+  has_open_dispute: boolean;
+}
+export type PortalStatus = "SUBMITTED" | "PROCESSING" | "UNDER_REVIEW" | "APPROVED" | "REJECTED" | "MORE_INFO";
+export interface PortalComplaint {
+  id: number;
+  reference: string;
+  merchant: string | null;
+  amount: string | null;
+  category: string | null;
+  status: PortalStatus;
+  status_label: string;
+  message: string;
+  created_at: string;
+}
+export interface PortalComplaintDetail extends PortalComplaint {
+  description: string;
+  transaction_date: string | null;
+  letter: string | null;
+  timeline: { label: string; at: string | null }[];
+}

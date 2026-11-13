@@ -24,6 +24,7 @@ UTC = timezone.utc  # Python 3.11+ compat
 
 EXPECTED_TABLES = {
     "customers",
+    "customer_accounts",
     "cards",
     "merchants",
     "transactions",

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { AUTH_EVENT, getReviewerKey, setReviewerKey } from "@/api/auth";
 import { useMe } from "@/api/hooks";
+import { Brand } from "@/components/Brand";
 import { LoginGate } from "@/components/LoginGate";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -56,20 +57,15 @@ export function Layout() {
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-border bg-surface/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1280px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5 sm:px-6">
-          <NavLink to="/" className="flex items-center gap-2 font-serif text-lg font-semibold">
-            <span className="flex h-7 w-7 items-center justify-center rounded-control bg-primary text-sm text-primary-foreground">
-              D
-            </span>
-            DisputeIQ
-          </NavLink>
+          <Brand to="/reviewer" sub="Reviewer portal" />
           <nav className="flex items-center gap-1" aria-label="Main">
-            <NavLink to="/" end className={link}>
+            <NavLink to="/reviewer" end className={link}>
               Queue
             </NavLink>
-            <NavLink to="/submit" className={link}>
-              Submit complaint
+            <NavLink to="/reviewer/submit" className={link}>
+              Staff intake
             </NavLink>
-            <NavLink to="/metrics" className={link}>
+            <NavLink to="/reviewer/metrics" className={link}>
               Metrics
             </NavLink>
           </nav>

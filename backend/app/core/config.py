@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     # Prototype reviewer auth: "name=key,name2=key2" (keys >= 8 chars). Empty = writes refused.
     reviewer_accounts: str = ""
+    # Signs customer-portal session tokens. Recommended in production; if empty a key is derived
+    # from REVIEWER_ACCOUNTS (see app/core/security.py). Never commit a real value.
+    auth_secret: str = ""
+    # Demo-only password for the six demo customers' portal logins (seeded with
+    # BOOTSTRAP_DEMO_CUSTOMERS). Empty = no demo customer logins are created.
+    demo_customer_password: str = ""
     max_request_bytes: int = Field(default=64_000, gt=0)
 
     database_url: str = "postgresql+psycopg://disputeiq:disputeiq@localhost:5432/disputeiq"

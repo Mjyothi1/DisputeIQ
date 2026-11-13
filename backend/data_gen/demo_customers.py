@@ -133,6 +133,38 @@ def ensure_demo_customers(session: Session, now: datetime | None = None) -> dict
     return added
 
 
+DEMO_EMAIL_DOMAIN = "demo.disputeiq.test"
+
+
+def demo_email(sc: DemoScenario) -> str:
+    """'Demo Customer - Meera Iyer' -> 'meera.iyer@demo.disputeiq.test' (reserved .test TLD)."""
+    person = sc.customer.split(" - ", 1)[-1]
+    return ".".join(person.lower().split()) + "@" + DEMO_EMAIL_DOMAIN
+
+
+def ensure_demo_customer_accounts(session: Session, password: str) -> dict[str, int]:
+    """Portal logins for the six demo customers. Additive and idempotent: an existing account
+    (matched by email) is left exactly as it is, including its password."""
+    from app.core.security import hash_password
+
+    if len(password) < 8:
+        raise ValueError("DEMO_CUSTOMER_PASSWORD must be at least 8 characters")
+    added = 0
+    for sc in SCENARIOS:
+        email = demo_email(sc)
+        if session.scalar(select(models.CustomerAccount.id).where(models.CustomerAccount.email == email)):
+            continue
+        cust = session.scalars(select(models.Customer).where(models.Customer.name == sc.customer)).first()
+        if cust is None:
+            continue
+        if session.scalar(select(models.CustomerAccount.id).where(models.CustomerAccount.customer_id == cust.id)):
+            continue
+        session.add(models.CustomerAccount(customer_id=cust.id, email=email, password_hash=hash_password(password)))
+        added += 1
+    session.commit()
+    return {"accounts": added}
+
+
 if __name__ == "__main__":
     from app.db.session import get_session_factory
 

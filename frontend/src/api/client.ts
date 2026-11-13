@@ -11,7 +11,8 @@ import type {
   ReasonCode,
   ReviewRequest,
 } from "./types";
-import { getReviewerKey, setReviewerKey } from "./auth";
+import type { PortalComplaint, PortalComplaintDetail, PortalProfile, PortalTxn, PortalToken } from "./types";
+import { getCustomerToken, getReviewerKey, setCustomerToken, setReviewerKey } from "./auth";
 
 export const API_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
@@ -37,10 +38,12 @@ function describe(detail: unknown): string {
   return "Unexpected error";
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+type Auth = "reviewer" | "customer" | "none";
+
+async function request<T>(path: string, init?: RequestInit, auth: Auth = "reviewer"): Promise<T> {
   let res: Response;
   try {
-    const key = getReviewerKey();
+    const key = auth === "reviewer" ? getReviewerKey() : auth === "customer" ? getCustomerToken() : "";
     res = await fetch(`${API_URL}${path}`, {
       ...init,
       headers: {
@@ -58,7 +61,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* keep statusText */
     }
-    if (res.status === 401 && getReviewerKey()) setReviewerKey(""); // key rejected: sign out
+    if (res.status === 401 && auth === "reviewer" && getReviewerKey()) setReviewerKey(""); // key rejected
+    if (res.status === 401 && auth === "customer" && getCustomerToken()) setCustomerToken(""); // session ended
     throw new ApiError(res.status, describe(detail));
   }
   return (await res.json()) as T;
@@ -93,4 +97,20 @@ export const api = {
   reasonCodes: () => request<ReasonCode[]>("/reason-codes"),
   metrics: () => request<Metrics>("/metrics"),
   config: () => request<PublicConfig>("/config"),
+};
+
+// ---- customer portal (customer session only; the server derives the customer from the token) ----
+
+export const portal = {
+  login: (email: string, password: string) =>
+    request<PortalToken>("/portal/login", { method: "POST", body: JSON.stringify({ email, password }) }, "none"),
+  register: (name: string, email: string, password: string) =>
+    request<PortalToken>("/portal/register", { method: "POST", body: JSON.stringify({ name, email, password }) }, "none"),
+  me: () => request<PortalProfile>("/portal/me", undefined, "customer"),
+  transactions: () => request<PortalTxn[]>("/portal/transactions", undefined, "customer"),
+  categories: () => request<Record<string, string>>("/portal/categories", undefined, "none"),
+  complaints: () => request<PortalComplaint[]>("/portal/disputes", undefined, "customer"),
+  complaint: (id: number) => request<PortalComplaintDetail>(`/portal/disputes/${id}`, undefined, "customer"),
+  report: (body: { transaction_id: number; category: string; description: string }) =>
+    request<PortalComplaint>("/portal/disputes", { method: "POST", body: JSON.stringify(body) }, "customer"),
 };

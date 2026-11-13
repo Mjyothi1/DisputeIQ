@@ -44,6 +44,8 @@ def current_reviewer(
     token = ""
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization[7:].strip()
+    if token.startswith("cust."):  # a signed-in customer: authenticated, but not a reviewer
+        raise HTTPException(403, "Reviewer access required.")
     matched: str | None = None
     for name, key in accounts.items():  # no early exit: constant work per account
         if hmac.compare_digest(key.encode(), token.encode()):

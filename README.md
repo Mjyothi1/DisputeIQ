@@ -198,6 +198,14 @@ alternates. Langfuse export is optional and tested against a local stub when dis
 * Docker Compose and deployment configs were not executed in the build sandbox (Postgres and
 pgvector were verified locally outside Docker).
 
+**Two portals:** customers sign in at `/customer` to report a problem on their own transactions and track it;
+bank reviewers use `/reviewer` (queue, evidence, decisions, audit). Same database and the same AI pipeline; roles are
+enforced by the API. Guides: [customer](docs/CUSTOMER_DEMO_GUIDE.md) · [reviewer](docs/REVIEWER_DEMO_GUIDE.md) ·
+[credentials](docs/DEMO_CREDENTIALS.md) · [verification](docs/FINAL_VERIFICATION.md).
+
+Customer API (`/portal/*`, customer session token): `register`, `login`, `me`, `transactions`, `disputes` (create/list/get
+own), `categories`. New env vars: `AUTH_SECRET` (session signing), `DEMO_CUSTOMER_PASSWORD` (demo logins).
+
 Demo kit: [slides](docs/DisputeIQ_Zeta_Innovate_2026.pptx) · [speaking notes](docs/JUDGE_PRESENTATION_SCRIPT.md) · [live demo script](docs/LIVE_DEMO_SCRIPT.md) · [fallback plan](docs/DEMO_FALLBACK_PLAN.md) · [verification status](docs/VERIFICATION.md).
 
 Design decisions are logged in [DECISIONS.md](DECISIONS.md); API in [docs/api.md](docs/api.md);
