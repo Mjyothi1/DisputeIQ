@@ -6,6 +6,7 @@ return 404 (not 403) so their existence is not revealed.
 
 from datetime import datetime, timedelta, timezone
 import hashlib
+import hmac
 import secrets
 from decimal import Decimal
 from typing import Annotated
@@ -127,8 +128,8 @@ def _new_verification_code() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
 
 
-def _code_hash(code: str) -> str:
-    return hashlib.sha256(code.encode()).hexdigest()
+def _code_hash(code: str, secret: bytes) -> str:
+    return hmac.new(secret, code.encode(), hashlib.sha256).hexdigest()
 
 
 @router.post(
@@ -151,7 +152,7 @@ def register(
         email=body.email,
         password_hash=hash_password(body.password),
         email_verified=False,
-        email_verification_code_hash=_code_hash(code),
+        email_verification_code_hash=_code_hash(code, _secret(settings)),
         email_verification_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
         email_verification_attempts=0,
     )
@@ -191,7 +192,7 @@ def verify_email(
         or acct.email_verification_attempts >= 5
     ):
         raise HTTPException(400, "This verification code has expired. Please register again.")
-    if not secrets.compare_digest(_code_hash(body.code), acct.email_verification_code_hash):
+    if not hmac.compare_digest(_code_hash(body.code, secret), acct.email_verification_code_hash):
         acct.email_verification_attempts += 1
         db.commit()
         raise HTTPException(400, "Incorrect verification code. Please check and try again.")
@@ -229,7 +230,7 @@ def resend_verification(
             email=body.email,
         )
     code = _new_verification_code()
-    acct.email_verification_code_hash = _code_hash(code)
+    acct.email_verification_code_hash = _code_hash(code, _secret(settings))
     acct.email_verification_expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
     acct.email_verification_attempts = 0
     try:
