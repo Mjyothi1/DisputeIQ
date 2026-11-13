@@ -95,6 +95,20 @@ class TokenOut(BaseModel):
     name: str
     role: str = "customer"
 
+@router.post("/register", response_model=TokenOut, status_code=201, summary="Create a customer account")
+def register(body: Registration, db: DB, settings: Annotated[Settings, Depends(get_settings)]) -> TokenOut:
+    secret = _secret(settings)
+    login_limiter.check(f"reg:{body.email}")
+    if db.scalar(select(m.CustomerAccount.id).where(m.CustomerAccount.email == body.email)):
+        raise HTTPException(409, "An account with this email already exists.")
+    cust = m.Customer(name=body.name.strip(), email=body.email, segment="RETAIL")
+    db.add(cust)
+    db.flush()
+    acct = m.CustomerAccount(customer_id=cust.id, email=body.email, password_hash=hash_password(body.password), email_verified=True)
+    db.add(acct)
+    db.commit()
+    return TokenOut(token=issue_customer_token(secret, acct.id, cust.id), name=cust.name)
+
 
 @router.post("/login", response_model=TokenOut, summary="Customer sign-in")
 def login(
