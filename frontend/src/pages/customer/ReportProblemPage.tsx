@@ -5,7 +5,7 @@ import { ApiError } from "@/api/client";
 import { usePortalCategories, usePortalTxns, useReportProblem } from "@/api/portalHooks";
 import type { PortalComplaint } from "@/api/types";
 import { Button } from "@/components/ui/button";
-import { Label, Select, Textarea } from "@/components/ui/input";
+import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate, formatInr } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -16,11 +16,17 @@ export function ReportProblemPage() {
   const cats = usePortalCategories();
   const report = useReportProblem();
   const [txnId, setTxnId] = useState<number | null>(params.get("txn") ? Number(params.get("txn")) : null);
+  const [manual, setManual] = useState(false);
+  const [merchant, setMerchant] = useState("");
+  const [amount, setAmount] = useState("");
+  const [txnDate, setTxnDate] = useState("");
+  const [last4, setLast4] = useState("");
   const [category, setCategory] = useState("");
   const [text, setText] = useState("");
   const [done, setDone] = useState<PortalComplaint | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const ready = txnId !== null && category !== "" && text.trim().length >= 5;
+  const useManual = manual || (!txns.isLoading && !txns.data?.length);
+  const ready = (useManual ? merchant.trim().length >= 2 && Number(amount) > 0 && txnDate !== "" : txnId !== null) && category !== "" && text.trim().length >= 5;
 
   if (done) {
     return (
@@ -42,10 +48,10 @@ export function ReportProblemPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!ready || txnId === null) return;
+    if (!ready) return;
     setError(null);
     try {
-      setDone(await report.mutateAsync({ transaction_id: txnId, category, description: text.trim() }));
+      setDone(await report.mutateAsync(useManual ? { merchant_name: merchant.trim(), amount, transaction_date: new Date(txnDate + "T00:00:00").toISOString(), card_last4: last4 || undefined, category, description: text.trim() } : { transaction_id: txnId!, category, description: text.trim() }));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not submit. Please try again.");
     }
@@ -58,30 +64,33 @@ export function ReportProblemPage() {
       <form onSubmit={submit} className="space-y-6 rounded-panel border border-border bg-surface p-5">
         <fieldset>
           <legend className="mb-1.5 text-sm font-medium">1. Which transaction? <span className="text-fail">*</span></legend>
-          {txns.isLoading ? (
-            <Skeleton className="h-24" />
-          ) : !txns.data?.length ? (
-            <p className="text-sm text-muted-foreground">There are no transactions on your cards to report.</p>
-          ) : (
-            <ul className="max-h-72 divide-y divide-border overflow-y-auto rounded-control border border-border" role="radiogroup" aria-label="Your transactions">
-              {txns.data.map((t) => {
-                const on = txnId === t.id;
-                return (
-                  <li key={t.id}>
-                    <label className={cn("flex cursor-pointer items-center gap-3 px-3 py-2.5", on && "bg-primary/5")}>
-                      <input type="radio" name="txn" className="accent-[hsl(var(--primary))]" checked={on} onChange={() => setTxnId(t.id)} />
-                      <span className="flex-1">
-                        <span className="font-medium">{t.merchant_name}</span>
-                        <span className="block text-xs text-muted-foreground">{formatDate(t.txn_time)} · •••• {t.card_last4}</span>
-                      </span>
-                      <span className="tabular-nums">{formatInr(t.amount)}</span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
+          {txns.isLoading ? <Skeleton className="h-24" /> : (
+            <div className="space-y-3">
+              {!!txns.data?.length && <ul className="max-h-72 divide-y divide-border overflow-y-auto rounded-control border border-border" role="radiogroup" aria-label="Your transactions">
+                {txns.data.map((t) => {
+                  const on = !useManual && txnId === t.id;
+                  return <li key={t.id}><label className={cn("flex cursor-pointer items-center gap-3 px-3 py-2.5", on && "bg-primary/5")}>
+                    <input type="radio" name="txn" className="accent-[hsl(var(--primary))]" checked={on} onChange={() => { setManual(false); setTxnId(t.id); }} />
+                    <span className="flex-1"><span className="font-medium">{t.merchant_name}</span><span className="block text-xs text-muted-foreground">{formatDate(t.txn_time)} · •••• {t.card_last4}</span></span>
+                    <span className="tabular-nums">{formatInr(t.amount)}</span>
+                  </label></li>;
+                })}
+              </ul>}
+              <label className="flex cursor-pointer items-center gap-2 rounded-control border border-border p-3 text-sm">
+                <input type="radio" name="txn" checked={useManual} onChange={() => setManual(true)} />
+                I can’t find my transaction / I’m a new customer
+              </label>
+            </div>
           )}
         </fieldset>
+        {useManual && <div className="space-y-3 rounded-control border border-border p-3">
+          <p className="text-sm font-medium">Enter transaction details</p>
+          <div><Label htmlFor="merchant">Merchant name *</Label><Input id="merchant" value={merchant} onChange={(e) => setMerchant(e.target.value)} required /></div>
+          <div><Label htmlFor="amount">Amount (₹) *</Label><Input id="amount" type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required /></div>
+          <div><Label htmlFor="txn-date">Transaction date *</Label><Input id="txn-date" type="date" value={txnDate} onChange={(e) => setTxnDate(e.target.value)} required /></div>
+          <div><Label htmlFor="last4">Card last 4 digits (optional)</Label><Input id="last4" inputMode="numeric" maxLength={4} value={last4} onChange={(e) => setLast4(e.target.value.replace(/\\D/g, "").slice(0, 4))} /></div>
+          <p className="text-xs text-muted-foreground">These details are customer-provided and not bank-verified. A reviewer must check them against issuer records. Never enter your full card number, CVV or OTP.</p>
+        </div>}
 
         <div>
           <Label htmlFor="category">2. What went wrong? <span className="text-fail">*</span></Label>
