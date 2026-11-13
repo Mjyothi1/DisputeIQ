@@ -51,7 +51,7 @@ export function ReportProblemPage() {
     if (!ready) return;
     setError(null);
     try {
-      setDone(await report.mutateAsync(useManual ? { merchant_name: merchant.trim(), amount, transaction_date: new Date(txnDate + "T00:00:00").toISOString(), card_last4: last4 || undefined, category, description: text.trim() } : { transaction_id: txnId!, category, description: text.trim() }));
+      setDone(await report.mutateAsync(useManual ? { merchant_name: merchant.trim(), amount, transaction_date: txnDate + "T00:00:00Z", card_last4: last4 || undefined, category, description: text.trim() } : { transaction_id: txnId!, category, description: text.trim() }));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not submit. Please try again.");
     }
