@@ -108,6 +108,8 @@ export const portal = {
     request<PortalRegistration>("/portal/register", { method: "POST", body: JSON.stringify({ name, email, password }) }, "none"),
   verifyEmail: (email: string, code: string) =>
     request<PortalToken>("/portal/verify-email", { method: "POST", body: JSON.stringify({ email, code }) }, "none"),
+  resendVerification: (email: string) =>
+    request<PortalRegistration>("/portal/resend-verification", { method: "POST", body: JSON.stringify({ email }) }, "none"),
   me: () => request<PortalProfile>("/portal/me", undefined, "customer"),
   transactions: () => request<PortalTxn[]>("/portal/transactions", undefined, "customer"),
   categories: () => request<Record<string, string>>("/portal/categories", undefined, "none"),
