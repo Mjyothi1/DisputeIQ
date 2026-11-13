@@ -273,7 +273,7 @@ def submit(body: ComplaintIn, p: Me, db: DB, background: BackgroundTasks, runner
             raise HTTPException(422, "Enter merchant, amount and transaction date, or select a listed transaction.")
         merchant, amount, txn_date, last4 = body.merchant_name.strip(), body.amount, body.transaction_date, body.card_last4
         card_text = f", card ending {last4}" if last4 else ""
-        facts = f"[Customer portal] Category: {CATEGORIES[body.category]}. Customer-provided transaction details (NOT BANK-VERIFIED): {merchant}, Rs {amount:,.2f} on {txn_date:%d %b %Y}{card_text}. Verify against issuer records before deciding.\\n"
+        facts = f"[Customer portal] Category: {CATEGORIES[body.category]}. Customer-provided transaction details (NOT BANK-VERIFIED): {merchant}, Rs {amount:,.2f} on {txn_date:%d %b %Y}{card_text}. Verify against issuer records before deciding.\n"
     d = m.Dispute(customer_id=p.customer_id, channel=DisputeChannel.FORM, raw_text=facts + body.description, customer_category=body.category, customer_txn_id=txn.id if txn else None, customer_merchant=None if txn else merchant, customer_amount=None if txn else amount, customer_txn_date=None if txn else txn_date, customer_card_last4=None if txn else last4)
     db.add(d)
     db.commit()
