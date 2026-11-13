@@ -162,6 +162,10 @@ class Dispute(Base):
     # selected (ownership verified server-side). Both NULL for staff-entered and seeded disputes.
     customer_category: Mapped[str | None] = mapped_column(String(40))
     customer_txn_id: Mapped[int | None] = mapped_column(ForeignKey("transactions.id"))
+    customer_merchant: Mapped[str | None] = mapped_column(String(160))
+    customer_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    customer_txn_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    customer_card_last4: Mapped[str | None] = mapped_column(String(4))
 
     # Synthetic data only. The agent must never read these two columns.
     ground_truth: Mapped[dict[str, Any] | None] = mapped_column(JSONType)

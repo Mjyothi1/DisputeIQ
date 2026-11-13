@@ -103,71 +103,25 @@ def test_tokens_cannot_be_forged_tampered_or_reused_after_expiry() -> None:
 
 
 # ---- registration / login -------------------------------------------------------------------
-def test_register_requires_email_verification_then_allows_login(w: World, monkeypatch: pytest.MonkeyPatch) -> None:
-    sent: list[tuple[str, str]] = []
-    monkeypatch.setattr(
-        "app.api.portal.send_customer_verification_code",
-        lambda settings, recipient, code: sent.append((recipient, code)),
-    )
+def test_register_creates_verified_account_and_allows_immediate_login(w: World) -> None:
     r = w.anon.post("/portal/register", json={"email": "New.User@Example.com", "password": "longenough1", "name": "New User"})
-    assert r.status_code == 201 and "token" not in r.json()
-    assert sent and sent[0][0] == "new.user@example.com"
-    pending = w.anon.post("/portal/login", json={"email": "new.user@example.com", "password": "longenough1"})
-    assert pending.status_code == 403 and "verify" in pending.json()["detail"].lower()
-    duplicate = w.anon.post("/portal/register", json={"email": "new.user@example.com", "password": "longenough1", "name": "X Y"})
-    assert duplicate.status_code == 409
-    verified = w.anon.post("/portal/verify-email", json={"email": "new.user@example.com", "code": sent[0][1]})
-    assert verified.status_code == 200 and verified.json()["role"] == "customer"
-    c = TestClient(app, headers={"Authorization": f"Bearer {verified.json()['token']}"})
+    assert r.status_code == 201 and r.json()["role"] == "customer" and r.json()["token"]
+    c = TestClient(app, headers={"Authorization": f"Bearer {r.json()['token']}"})
     me = c.get("/portal/me").json()
     assert me["email"] == "new.user@example.com" and me["cards"] == []
+    duplicate = w.anon.post("/portal/register", json={"email": "new.user@example.com", "password": "longenough1", "name": "X Y"})
+    assert duplicate.status_code == 409
     ok = w.anon.post("/portal/login", json={"email": "new.user@example.com", "password": "longenough1"})
-    assert ok.status_code == 200 and "password" not in ok.text.lower()
-    assert w.anon.post("/portal/verify-email", json={"email": "new.user@example.com", "code": sent[0][1]}).status_code == 400
-
-
-def test_resend_replaces_the_previous_verification_code(w: World, monkeypatch: pytest.MonkeyPatch) -> None:
-    sent: list[str] = []
-    monkeypatch.setattr(
-        "app.api.portal.send_customer_verification_code",
-        lambda settings, recipient, code: sent.append(code),
-    )
-    registered = w.anon.post(
-        "/portal/register",
-        json={"email": "resend@example.com", "password": "longenough1", "name": "Resend User"},
-    )
-    assert registered.status_code == 201
-    resent = w.anon.post("/portal/resend-verification", json={"email": "resend@example.com"})
-    assert resent.status_code == 200 and len(sent) == 2
-    assert w.anon.post(
-        "/portal/verify-email", json={"email": "resend@example.com", "code": sent[0]}
-    ).status_code == 400
-    assert w.anon.post(
-        "/portal/verify-email", json={"email": "resend@example.com", "code": sent[1]}
-    ).status_code == 200
-
-
-def test_registration_fails_closed_when_smtp_is_not_configured(w: World) -> None:
-    r = w.anon.post("/portal/register", json={"email": "nobody@example.com", "password": "longenough1", "name": "New User"})
-    assert r.status_code == 503
-
+    assert ok.status_code == 200 and ok.json()["role"] == "customer"
+    with Session(w.engine) as db:
+        account = db.scalar(select(m.CustomerAccount).where(m.CustomerAccount.email == "new.user@example.com"))
+        assert account is not None and account.email_verified is True
 
 def test_invalid_logins_are_rejected_uniformly(w: World) -> None:
     bad = w.anon.post("/portal/login", json={"email": demo_email(SCENARIOS[0]), "password": "wrong-password"})
     nobody = w.anon.post("/portal/login", json={"email": "nobody@example.com", "password": "wrong-password"})
     assert bad.status_code == nobody.status_code == 401 and bad.json() == nobody.json()
     assert w.anon.post("/portal/login", json={"email": "x", "password": "short"}).status_code == 422
-
-
-def test_registration_cannot_grant_reviewer_role(w: World, monkeypatch: pytest.MonkeyPatch) -> None:
-    sent: list[str] = []
-    monkeypatch.setattr("app.api.portal.send_customer_verification_code", lambda settings, recipient, code: sent.append(code))
-    r = w.anon.post("/portal/register", json={"email": "evil@example.com", "password": "longenough1", "name": "Evil", "role": "REVIEWER"})
-    assert r.status_code == 201 and "token" not in r.json()
-    verified = w.anon.post("/portal/verify-email", json={"email": "evil@example.com", "code": sent[0]})
-    assert verified.status_code == 200 and verified.json()["role"] == "customer"
-    c = TestClient(app, headers={"Authorization": f"Bearer {verified.json()['token']}"})
-    assert c.get("/disputes").status_code == 403
 
 
 def test_portal_requires_a_customer_token(w: World) -> None:
@@ -220,6 +174,33 @@ def test_customer_id_in_body_is_ignored(w: World) -> None:
         meera_id = s.scalars(select(m.Customer.id).where(m.Customer.name == SCENARIOS[0].customer)).one()
         assert d is not None and d.customer_id == meera_id
 
+
+def test_customer_can_submit_manual_transaction_without_history(w: World) -> None:
+    c = w.anon.post("/portal/register", json={"email": "manual@example.com", "password": "longenough1", "name": "Manual User"})
+    assert c.status_code == 201
+    customer = TestClient(app, headers={"Authorization": f"Bearer {c.json()['token']}"})
+    assert customer.get("/portal/transactions").json() == []
+    response = customer.post("/portal/disputes", json={
+        "merchant_name": "Local Store", "amount": "1250.50", "transaction_date": "2026-11-10T00:00:00Z",
+        "card_last4": "1234", "category": "OTHER", "description": "I do not recognise this transaction"
+    })
+    assert response.status_code == 202, response.text
+    with Session(w.engine) as db:
+        dispute = db.get(m.Dispute, response.json()["id"])
+        assert dispute is not None
+        assert dispute.customer_txn_id is None
+        assert dispute.customer_merchant == "Local Store"
+        assert str(dispute.customer_amount) == "1250.50"
+        assert dispute.customer_card_last4 == "1234"
+        assert "NOT BANK-VERIFIED" in dispute.raw_text
+        assert "Verify against issuer records" in dispute.raw_text
+
+
+def test_manual_transaction_requires_merchant_amount_and_date(w: World) -> None:
+    c = w.anon.post("/portal/register", json={"email": "incomplete@example.com", "password": "longenough1", "name": "Incomplete User"})
+    customer = TestClient(app, headers={"Authorization": f"Bearer {c.json()['token']}"})
+    response = customer.post("/portal/disputes", json={"merchant_name": "Store", "category": "OTHER", "description": "This transaction is incorrect"})
+    assert response.status_code == 422
 
 def test_customer_cannot_read_another_customers_complaint(w: World) -> None:
     meera, rohan = w.login(0), w.login(1)

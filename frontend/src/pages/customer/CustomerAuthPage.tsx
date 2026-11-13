@@ -24,8 +24,10 @@ export function CustomerAuthPage({ mode }: { mode: "login" | "register" }) {
     setError(null);
     try {
       if (register) {
-        await portal.register(name.trim(), email.trim(), password);
-        nav(`/customer/verify-email?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+        const res = await portal.register(name.trim(), email.trim(), password);
+        setCustomerToken(res.token);
+        await qc.invalidateQueries({ queryKey: ["portal"] });
+        nav("/customer");
         return;
       }
       const res = await portal.login(email.trim(), password);
