@@ -4,10 +4,7 @@ Ownership is checked on every transaction and dispute lookup; records that belon
 return 404 (not 403) so their existence is not revealed.
 """
 
-import hashlib
-import hmac
-import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated
 
@@ -29,7 +26,6 @@ from app.core.security import (
 from app.db import models as m
 from app.db.enums import DisputeChannel
 from app.db.session import get_db
-from app.services.customer_email import send_customer_verification_code
 from app.services.customer_view import CATEGORIES, customer_status, timeline
 
 router = APIRouter(prefix="/portal", tags=["customer portal"])
@@ -70,8 +66,6 @@ def current_customer(
     acct = db.get(m.CustomerAccount, payload["sub"])
     if acct is None or acct.customer_id != payload["cid"]:
         raise HTTPException(401, "Session is no longer valid. Please sign in again.")
-    if not acct.email_verified:
-        raise HTTPException(403, "Please verify your email address before signing in.")
     return Principal(account_id=acct.id, customer_id=acct.customer_id)
 
 
@@ -132,121 +126,19 @@ def _code_hash(code: str, secret: bytes) -> str:
     return hmac.new(secret, code.encode(), hashlib.sha256).hexdigest()
 
 
-@router.post(
-    "/register", response_model=RegistrationOut, status_code=201,
-    summary="Create a customer account and send an email verification code",
-)
-def register(
-    body: Registration, db: DB, settings: Annotated[Settings, Depends(get_settings)]
-) -> RegistrationOut:
-    _secret(settings)
+@router.post("/register", response_model=TokenOut, status_code=201, summary="Create a customer account")
+def register(body: Registration, db: DB, settings: Annotated[Settings, Depends(get_settings)]) -> TokenOut:
+    secret = _secret(settings)
     login_limiter.check(f"reg:{body.email}")
     if db.scalar(select(m.CustomerAccount.id).where(m.CustomerAccount.email == body.email)):
         raise HTTPException(409, "An account with this email already exists.")
-    code = _new_verification_code()
     cust = m.Customer(name=body.name.strip(), email=body.email, segment="RETAIL")
     db.add(cust)
     db.flush()
-    acct = m.CustomerAccount(
-        customer_id=cust.id,
-        email=body.email,
-        password_hash=hash_password(body.password),
-        email_verified=False,
-        email_verification_code_hash=_code_hash(code, _secret(settings)),
-        email_verification_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
-        email_verification_attempts=0,
-    )
+    acct = m.CustomerAccount(customer_id=cust.id, email=body.email, password_hash=hash_password(body.password), email_verified=True)
     db.add(acct)
-    try:
-        send_customer_verification_code(settings, body.email, code)
-        db.commit()
-    except Exception as exc:
-        db.rollback()
-        raise HTTPException(
-            503, "We could not send the verification email. Please try again later."
-        ) from exc
-    return RegistrationOut(
-        message="A 6-digit verification code has been sent to your email address.",
-        email=body.email,
-    )
-
-
-@router.post("/verify-email", response_model=TokenOut, summary="Verify a new customer email")
-def verify_email(
-    body: VerifyEmailIn, db: DB, settings: Annotated[Settings, Depends(get_settings)]
-) -> TokenOut:
-    secret = _secret(settings)
-    login_limiter.check(f"verify:{body.email}")
-    acct = db.scalars(
-        select(m.CustomerAccount)
-        .options(joinedload(m.CustomerAccount.customer))
-        .where(m.CustomerAccount.email == body.email)
-    ).first()
-    if acct is None or acct.email_verified:
-        raise HTTPException(400, "This verification code is invalid or has expired.")
-    expiry = acct.email_verification_expires_at
-    stored_hash = acct.email_verification_code_hash
-    if (
-        not stored_hash
-        or not expiry
-        or expiry.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc)
-        or acct.email_verification_attempts >= 5
-    ):
-        raise HTTPException(400, "This verification code has expired. Please request a new code.")
-    if not hmac.compare_digest(_code_hash(body.code, secret), stored_hash):
-        acct.email_verification_attempts += 1
-        db.commit()
-        raise HTTPException(400, "Incorrect verification code. Please check and try again.")
-    acct.email_verified = True
-    acct.email_verification_code_hash = None
-    acct.email_verification_expires_at = None
-    acct.email_verification_attempts = 0
     db.commit()
-    return TokenOut(
-        token=issue_customer_token(secret, acct.id, acct.customer_id), name=acct.customer.name
-    )
-
-
-class ResendVerificationIn(BaseModel):
-    email: str = Field(min_length=3, max_length=160)
-
-    @field_validator("email")
-    @classmethod
-    def _email(cls, v: str) -> str:
-        return Credentials._email(v)
-
-
-@router.post("/resend-verification", response_model=RegistrationOut)
-def resend_verification(
-    body: ResendVerificationIn, db: DB, settings: Annotated[Settings, Depends(get_settings)]
-) -> RegistrationOut:
-    login_limiter.check(f"resend:{body.email}")
-    acct = db.scalars(
-        select(m.CustomerAccount).where(m.CustomerAccount.email == body.email)
-    ).first()
-    # Do not reveal whether an email is registered or already verified.
-    if acct is None or acct.email_verified:
-        return RegistrationOut(
-            message="If the account needs verification, a new code has been sent.",
-            email=body.email,
-        )
-    code = _new_verification_code()
-    acct.email_verification_code_hash = _code_hash(code, _secret(settings))
-    acct.email_verification_expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
-    acct.email_verification_attempts = 0
-    try:
-        send_customer_verification_code(settings, body.email, code)
-        db.commit()
-    except Exception as exc:
-        db.rollback()
-        raise HTTPException(
-            503, "We could not send the verification email. Please try again later."
-        ) from exc
-    return RegistrationOut(
-        message="A new verification code has been sent to your email address.",
-        email=body.email,
-    )
-
+    return TokenOut(token=issue_customer_token(secret, acct.id, cust.id), name=cust.name)
 
 @router.post("/login", response_model=TokenOut, summary="Customer sign-in")
 def login(
@@ -338,7 +230,11 @@ def transactions(p: Me, db: DB) -> list[TxnOut]:
 
 # ---- disputes -------------------------------------------------------------------------------
 class ComplaintIn(BaseModel):
-    transaction_id: int
+    transaction_id: int | None = None
+    merchant_name: str | None = Field(default=None, min_length=2, max_length=160)
+    amount: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
+    transaction_date: datetime | None = None
+    card_last4: str | None = Field(default=None, pattern=r"^\d{4}$")
     category: str
     description: str = Field(min_length=5, max_length=3000)
 
@@ -389,7 +285,7 @@ def _ref(i: int) -> str:
 def _summary(d: m.Dispute) -> ComplaintSummary:
     st, t = customer_status(d), d.customer_txn
     return ComplaintSummary(
-        id=d.id, reference=_ref(d.id), merchant=t.merchant.name if t else None, amount=t.amount if t else None,
+        id=d.id, reference=_ref(d.id), merchant=t.merchant.name if t else d.customer_merchant, amount=t.amount if t else d.customer_amount,
         category=CATEGORIES.get(d.customer_category or ""), status=st.code, status_label=st.label,
         message=st.message, created_at=d.created_at,
     )  # fmt: skip
@@ -408,31 +304,28 @@ def _load(db: Session, customer_id: int):  # type: ignore[no-untyped-def]
     )
 
 
-@router.post(
-    "/disputes", response_model=ComplaintSummary, status_code=202, summary="Report a problem"
-)
-def submit(body: ComplaintIn, p: Me, db: DB, background: BackgroundTasks,
-           runner: Annotated[Runner, Depends(get_runner)]) -> ComplaintSummary:  # fmt: skip
+@router.post("/disputes", response_model=ComplaintSummary, status_code=202, summary="Report a problem")
+def submit(body: ComplaintIn, p: Me, db: DB, background: BackgroundTasks, runner: Annotated[Runner, Depends(get_runner)]) -> ComplaintSummary:
     submit_limiter.check(f"cust:{p.customer_id}")
-    txn = db.scalars(
-        _own_txn_query(p.customer_id).where(m.Transaction.id == body.transaction_id)
-    ).first()
-    if txn is None:  # not theirs, or does not exist: same answer
-        raise HTTPException(404, "Transaction not found.")
-    # The transaction facts come from OUR records (trusted), clearly separated from the customer's words,
-    # so the existing pipeline can match the right transaction. The customer's text stays untrusted.
-    facts = (
-        f"[Customer portal] Category: {CATEGORIES[body.category]}. Selected transaction: {txn.merchant.name}, "
-        f"Rs {txn.amount:,.2f} on {txn.txn_time:%d %b %Y}, card ending {txn.card.last4}.\n"
-    )
-    d = m.Dispute(customer_id=p.customer_id, channel=DisputeChannel.FORM, raw_text=facts + body.description,
-                  customer_category=body.category, customer_txn_id=txn.id)  # fmt: skip
+    txn = None
+    if body.transaction_id is not None:
+        txn = db.scalars(_own_txn_query(p.customer_id).where(m.Transaction.id == body.transaction_id)).first()
+        if txn is None:
+            raise HTTPException(404, "Transaction not found.")
+        merchant, amount, txn_date, last4 = txn.merchant.name, txn.amount, txn.txn_time, txn.card.last4
+        facts = f"[Customer portal] Category: {CATEGORIES[body.category]}. Selected transaction: {merchant}, Rs {amount:,.2f} on {txn_date:%d %b %Y}, card ending {last4}.\\n"
+    else:
+        if not body.merchant_name or body.amount is None or body.transaction_date is None:
+            raise HTTPException(422, "Enter merchant, amount and transaction date, or select a listed transaction.")
+        merchant, amount, txn_date, last4 = body.merchant_name.strip(), body.amount, body.transaction_date, body.card_last4
+        card_text = f", card ending {last4}" if last4 else ""
+        facts = f"[Customer portal] Category: {CATEGORIES[body.category]}. Customer-provided transaction details (NOT BANK-VERIFIED): {merchant}, Rs {amount:,.2f} on {txn_date:%d %b %Y}{card_text}. Verify against issuer records before deciding.\\n"
+    d = m.Dispute(customer_id=p.customer_id, channel=DisputeChannel.FORM, raw_text=facts + body.description, customer_category=body.category, customer_txn_id=txn.id if txn else None, customer_merchant=None if txn else merchant, customer_amount=None if txn else amount, customer_txn_date=None if txn else txn_date, customer_card_last4=None if txn else last4)
     db.add(d)
     db.commit()
-    background.add_task(runner, d.id)  # the existing AI pipeline, unchanged
+    background.add_task(runner, d.id)
     d = db.scalars(_load(db, p.customer_id).where(m.Dispute.id == d.id)).one()
     return _summary(d)
-
 
 @router.get("/disputes", response_model=list[ComplaintSummary])
 def my_disputes(p: Me, db: DB) -> list[ComplaintSummary]:
@@ -456,7 +349,7 @@ def my_dispute(dispute_id: int, p: Me, db: DB) -> ComplaintDetail:
     return ComplaintDetail(
         **s.model_dump(),
         description=text,
-        transaction_date=t.txn_time if t else None,
+        transaction_date=t.txn_time if t else d.customer_txn_date,
         letter=st.letter,
         timeline=[TimelineItem(label=str(i["label"]), at=i["at"]) for i in timeline(d)],
     )
