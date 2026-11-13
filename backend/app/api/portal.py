@@ -4,10 +4,10 @@ Ownership is checked on every transaction and dispute lookup; records that belon
 return 404 (not 403) so their existence is not revealed.
 """
 
-from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import secrets
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Annotated
 
@@ -185,14 +185,15 @@ def verify_email(
     if acct is None or acct.email_verified:
         raise HTTPException(400, "This verification code is invalid or has expired.")
     expiry = acct.email_verification_expires_at
+    stored_hash = acct.email_verification_code_hash
     if (
-        not acct.email_verification_code_hash
+        not stored_hash
         or not expiry
         or expiry.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc)
         or acct.email_verification_attempts >= 5
     ):
-        raise HTTPException(400, "This verification code has expired. Please register again.")
-    if not hmac.compare_digest(_code_hash(body.code, secret), acct.email_verification_code_hash):
+        raise HTTPException(400, "This verification code has expired. Please request a new code.")
+    if not hmac.compare_digest(_code_hash(body.code, secret), stored_hash):
         acct.email_verification_attempts += 1
         db.commit()
         raise HTTPException(400, "Incorrect verification code. Please check and try again.")
