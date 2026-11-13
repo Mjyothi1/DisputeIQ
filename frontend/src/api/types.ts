@@ -243,11 +243,8 @@ export interface Metrics {
 }
 
 // ---- customer portal ----
-export interface PortalToken {
-  token: string;
-  name: string;
-  role: "customer";
-}
+export interface PortalToken { token: string; name: string; role: "customer"; }
+export interface PortalRegistration { message: string; email: string; }
 export interface PortalProfile {
   name: string;
   email: string;
