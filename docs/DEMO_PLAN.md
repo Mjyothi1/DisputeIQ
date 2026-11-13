@@ -3,7 +3,7 @@
 ## Setup (before the room)
 1. Backend env: `REVIEWER_ACCOUNTS`, `GEMINI_API_KEY`, `CORS_ORIGINS`; check `python -m app.agent.cli --ping-llm`
    (a fresh key/quota matters: free tier can 429 - retries are bounded, failures go to human review, never to mock).
-2. `cd backend && python -m data_gen.demo_customers` - adds six isolated demo customers (additive, no deletes).
+2. Add the six isolated demo customers (additive, no deletes): locally `cd backend && python -m data_gen.demo_customers`; on a host without shell access (Render free) set `BOOTSTRAP_DEMO_CUSTOMERS=true` for one deploy, then set it back to `false` (see RUN_LOCAL.md).
 3. Sign in at the UI with your reviewer key. Rehearse once with different customers; **do not reuse a customer** twice
    (the frequent-disputer rule and duplicate guard are real and will change outcomes).
 4. The seeded queue was processed by the **offline rule engine** (`mock-rules-v1`). Only the submit-page cases below
