@@ -116,6 +116,10 @@ def ensure_demo_customers_if_enabled(
                 "if you want the full queue."
             )
         added = ensure_demo_customers(s)
+        if settings.demo_customer_password:
+            from data_gen.demo_customers import ensure_demo_customer_accounts
+
+            added.update(ensure_demo_customer_accounts(s, settings.demo_customer_password))
     logger.info("demo customers ready", extra=added)
     return added
 

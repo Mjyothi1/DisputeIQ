@@ -158,13 +158,18 @@ class Dispute(Base):
     confidence: Mapped[float | None] = mapped_column(Float)
     deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
+    # Customer-portal submissions only: the category the customer picked and the transaction they
+    # selected (ownership verified server-side). Both NULL for staff-entered and seeded disputes.
+    customer_category: Mapped[str | None] = mapped_column(String(40))
+    customer_txn_id: Mapped[int | None] = mapped_column(ForeignKey("transactions.id"))
 
     # Synthetic data only. The agent must never read these two columns.
     ground_truth: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
     split: Mapped[DataSplit | None] = mapped_column(_enum(DataSplit), index=True)
 
     customer: Mapped[Customer] = relationship(back_populates="disputes")
-    matched_txn: Mapped[Transaction | None] = relationship()
+    matched_txn: Mapped[Transaction | None] = relationship(foreign_keys=[matched_txn_id])
+    customer_txn: Mapped[Transaction | None] = relationship(foreign_keys=[customer_txn_id])
     evidence: Mapped[list["Evidence"]] = relationship(
         back_populates="dispute", cascade="all, delete-orphan"
     )
@@ -177,6 +182,20 @@ class Dispute(Base):
     audit_events: Mapped[list["AuditEvent"]] = relationship(
         back_populates="dispute", cascade="all, delete-orphan"
     )
+
+
+class CustomerAccount(Base):
+    """Customer-portal login. Always role CUSTOMER; reviewers never live in this table."""
+
+    __tablename__ = "customer_accounts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), unique=True)
+    email: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
+
+    customer: Mapped[Customer] = relationship()
 
 
 class Evidence(Base):
