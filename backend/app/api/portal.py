@@ -267,7 +267,7 @@ def submit(body: ComplaintIn, p: Me, db: DB, background: BackgroundTasks, runner
         if txn is None:
             raise HTTPException(404, "Transaction not found.")
         merchant, amount, txn_date, last4 = txn.merchant.name, txn.amount, txn.txn_time, txn.card.last4
-        facts = f"[Customer portal] Category: {CATEGORIES[body.category]}. Selected transaction: {merchant}, Rs {amount:,.2f} on {txn_date:%d %b %Y}, card ending {last4}.\\n"
+        facts = f"[Customer portal] Category: {CATEGORIES[body.category]}. Selected transaction: {merchant}, Rs {amount:,.2f} on {txn_date:%d %b %Y}, card ending {last4}.\n"
     else:
         if not body.merchant_name or body.amount is None or body.transaction_date is None:
             raise HTTPException(422, "Enter merchant, amount and transaction date, or select a listed transaction.")
