@@ -33,6 +33,20 @@ export function CustomerVerifyEmailPage() {
     }
   }
 
+  async function resend() {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await portal.resendVerification(email.trim());
+      setNotice(res.message);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not resend the code. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-8">
       <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-panel border border-border bg-surface p-6 shadow-sm">
