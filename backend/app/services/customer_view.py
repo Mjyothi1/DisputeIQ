@@ -8,6 +8,7 @@ decision is the one the letter was drafted for.
 from dataclasses import dataclass
 from datetime import datetime
 
+from app.agent.documents import claims_completed_refund, correct_legacy_refund_wording
 from app.db import models as m
 from app.db.enums import DisputeStatus, Recommendation, ReviewAction
 
@@ -47,12 +48,26 @@ def _latest_review(d: m.Dispute) -> m.Review | None:
     return max(d.reviews, key=lambda x: x.id) if d.reviews else None
 
 
+# There is no payment/refund integration, so no record ever confirms that money reached the customer.
+# Until one exists, an approved refund is only ever described as AUTHORISED.
+PAYMENT_CONFIRMATION_AVAILABLE = False
+
+UNDER_REVIEW_SUPPORTED = (
+    "Your dispute is currently under review. Our team has identified evidence supporting your "
+    "claim and is evaluating the appropriate resolution."
+)
+UNDER_REVIEW_GENERIC = (
+    "Your dispute is currently under review by our team. No action is needed from you right now."
+)
+REFUND_AUTHORISED = (
+    "Your dispute was approved and a refund has been authorised. The bank makes the payment to "
+    "your account separately; it can take a few working days to appear on your statement."
+)
+
+
 def _outcome(final: Recommendation) -> tuple[str, str, str]:
     if final is Recommendation.REFUND:
-        return ("APPROVED", "Approved",
-                "Your dispute was approved and a refund has been authorised. The credit is processed "
-                "separately by the bank and may take a few working days to appear; this page does not "
-                "confirm that the money has been credited.")  # fmt: skip
+        return ("APPROVED", "Refund authorised", REFUND_AUTHORISED)
     if final is Recommendation.FILE_CHARGEBACK:
         return ("APPROVED", "Approved",
                 "Your dispute was accepted and the bank is raising a chargeback with the merchant's bank. "
@@ -73,23 +88,38 @@ def customer_status(d: m.Dispute) -> CustomerStatus:
     if d.status is DisputeStatus.PROCESSING:
         return CustomerStatus("PROCESSING", "Processing",
                               "We are checking your transaction records.", None, None)  # fmt: skip
-    if d.status is DisputeStatus.NEEDS_HUMAN:
-        return CustomerStatus("UNDER_REVIEW", "Under review",
-                              "A bank specialist is reviewing your case. No action is needed from you.", None, None)  # fmt: skip
     dec, rev = _latest_decision(d), _latest_review(d)
+    if d.status is DisputeStatus.NEEDS_HUMAN:
+        # A recommendation is not a decision: never reveal it as an outcome, and never say "approved".
+        supported = dec is not None and dec.recommendation in (
+            Recommendation.REFUND, Recommendation.FILE_CHARGEBACK,
+        )  # fmt: skip
+        msg = UNDER_REVIEW_SUPPORTED if supported else UNDER_REVIEW_GENERIC
+        return CustomerStatus("UNDER_REVIEW", "Under review", msg, None, None)
     if d.status is DisputeStatus.AUTO_RESOLVED and dec is not None:
         code, label, msg = _outcome(dec.recommendation)
-        return CustomerStatus(code, label, msg, dec.drafted_customer_letter, dec.created_at)
+        return CustomerStatus(code, label, msg, safe_letter(dec.drafted_customer_letter), dec.created_at)
     if rev is not None:
         code, label, msg = _outcome(rev.final_decision)
         letter = None
         # The drafted letter matches only when the reviewer kept the agent's decision.
         if rev.action in (ReviewAction.APPROVE, ReviewAction.EDIT) and dec is not None:
-            letter = rev.edited_letter or dec.drafted_customer_letter
+            letter = safe_letter(rev.edited_letter or dec.drafted_customer_letter)
         return CustomerStatus(code, label, msg, letter, rev.created_at)
     return CustomerStatus(
         "UNDER_REVIEW", "Under review", "Your case is being reviewed.", None, None
     )
+
+
+def safe_letter(text: str | None) -> str | None:
+    """Letter as the customer may see it: legacy premature wording corrected; anything that still
+    claims a completed payment (e.g. a reviewer's edit) is withheld rather than shown."""
+    if not text:
+        return None
+    text = correct_legacy_refund_wording(text)
+    if claims_completed_refund(text) and not PAYMENT_CONFIRMATION_AVAILABLE:
+        return None
+    return text
 
 
 def timeline(d: m.Dispute) -> list[dict[str, object]]:

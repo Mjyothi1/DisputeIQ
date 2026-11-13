@@ -53,7 +53,8 @@ _CLAIM_RULES: list[tuple[str, re.Pattern[str]]] = [
 LETTERS = {
     "REFUND": "We have reviewed your dispute about the {amount} charge by {merchant} on {txn_date} "
     "(case {case_id}). We found the charge was posted more than once or could not be completed, "
-    "and we are refunding the amount to your account.",
+    "and a refund of the amount has been authorised. The bank will make the payment to your account "
+    "separately, and it can take a few working days to appear on your statement.",
     "FILE_CHARGEBACK": "We have reviewed your dispute about the {amount} charge by {merchant} on "
     "{txn_date} (case {case_id}). We are raising a formal dispute with the merchant on your behalf; "
     "this must be filed by {deadline}. We will update you when the merchant responds.",

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import ColumnElement, Select, case, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.agent.documents import correct_legacy_refund_wording
 from app.api import schemas as s
 from app.core.timeutil import as_utc, utcnow
 from app.db import models as m
@@ -155,6 +156,17 @@ def _route_reasons(events: Sequence[m.AuditEvent]) -> list[str]:
     return []
 
 
+def _decision_out(dec: m.Decision | None) -> s.DecisionOut | None:
+    """Decision for the reviewer UI. Letters stored before the wording fix are shown corrected, so a
+    reviewer never approves a letter that says the refund was already paid (DB row unchanged)."""
+    if dec is None:
+        return None
+    out = s.DecisionOut.model_validate(dec)
+    if out.drafted_customer_letter:
+        out.drafted_customer_letter = correct_legacy_refund_wording(out.drafted_customer_letter)
+    return out
+
+
 def case_detail(session: Session, d: m.Dispute, now: datetime | None = None) -> s.CaseDetail:
     now = now or utcnow()
     txn = d.matched_txn
@@ -176,7 +188,7 @@ def case_detail(session: Session, d: m.Dispute, now: datetime | None = None) -> 
         deadline_at=d.deadline_at, days_to_deadline=days_until(d.deadline_at, now),
         filed_late=filed_late(d), created_at=d.created_at, transaction=txn_out,
         evidence=[s.EvidenceOut.model_validate(e) for e in sorted(d.evidence, key=lambda e: e.id)],
-        decision=s.DecisionOut.model_validate(dec) if dec else None,
+        decision=_decision_out(dec),
         reviews=[s.ReviewOut.model_validate(r) for r in sorted(d.reviews, key=lambda r: r.id)],
         route_reasons=_route_reasons(audit),
         can_review=d.status in REVIEWABLE and dec is not None,

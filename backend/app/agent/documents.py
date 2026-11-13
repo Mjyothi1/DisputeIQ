@@ -23,10 +23,25 @@ _DATE = re.compile(
     r"\b\d{1,2}[\s/-](?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{1,2})[a-z]*[\s/-]?\d{0,4}\b",
     re.I,
 )
+# Wording that states money has already moved. No payment/refund integration exists, so no letter
+# may say this; a draft that does is rejected in favour of the template (see validate_llm_text).
+COMPLETED_REFUND_CLAIM = re.compile(
+    r"\b(?:has|have|had)\s+been\s+(?:credited|refunded|reversed|processed|paid|returned)\b"
+    r"|\b(?:we|we've|we\s+have|i\s+have)\s+(?:now\s+)?(?:processed|credited|refunded|reversed|issued|paid)\b"
+    r"|\b(?:are|is|am)\s+(?:now\s+)?(?:refunding|crediting|reversing|returning)\b"
+    r"|\brefund(?:ed)?\s+(?:has|was)\s+(?:been\s+)?(?:processed|issued|credited|completed|paid)\b"
+    r"|\b(?:credited|refunded|reversed|returned)\s+(?:back\s+)?(?:to|into)\s+your\b"
+    r"|\brefund\s+(?:is\s+)?(?:processed|complete|completed)\b",
+    re.I,
+)
+REFUND_AUTHORISED_SENTENCE = (
+    "a refund of the amount has been authorised. The bank will make the payment to your account "
+    "separately, and it can take a few working days to appear on your statement"
+)
 _BAD_PLACEHOLDER = re.compile(r"\{(?!(?:" + "|".join(PLACEHOLDERS) + r")\})[^}]*\}")
 
 FALLBACK_BODY = {
-    Recommendation.REFUND: "We have reviewed your dispute about the {amount} charge by {merchant} on {txn_date} (case {case_id}) and are refunding the amount to your account.",
+    Recommendation.REFUND: "We have reviewed your dispute about the {amount} charge by {merchant} on {txn_date} (case {case_id}) and " + REFUND_AUTHORISED_SENTENCE + ".",
     Recommendation.FILE_CHARGEBACK: "We have reviewed your dispute about the {amount} charge by {merchant} on {txn_date} (case {case_id}). We are raising a formal dispute with the merchant on your behalf and will update you on the outcome.",
     Recommendation.REJECT: "We have reviewed your dispute about the {amount} charge by {merchant} on {txn_date} (case {case_id}). Based on our records we are unable to raise a dispute for this charge. If you have further information, please reply to this letter.",
     Recommendation.NEED_MORE_INFO: "We are reviewing your dispute (case {case_id}) but need more details to identify the transaction. Please send the merchant name, the amount and the date of the charge.",
@@ -83,7 +98,27 @@ def validate_llm_text(text: str) -> list[str]:
         problems.append("long number")
     if _BAD_PLACEHOLDER.search(text):
         problems.append("unknown placeholder")
+    if COMPLETED_REFUND_CLAIM.search(text):
+        problems.append("claims a completed refund")
     return problems
+
+
+def claims_completed_refund(text: str | None) -> bool:
+    """True if the text says money has already been refunded/credited."""
+    return bool(text and COMPLETED_REFUND_CLAIM.search(text))
+
+
+# Letters drafted before this fix used exactly these phrasings; they are corrected when displayed.
+_LEGACY = (
+    re.compile(r"\b(?:and\s+)?(?:we\s+)?are refunding the amount to your account", re.I),
+)
+
+
+def correct_legacy_refund_wording(text: str) -> str:
+    """Rewrite the old template's premature claim into authorised-not-paid wording."""
+    for pat in _LEGACY:
+        text = pat.sub("and " + REFUND_AUTHORISED_SENTENCE, text)
+    return text.replace("and and ", "and ")
 
 
 def fill(text: str, facts: DocFacts) -> str:

@@ -62,6 +62,9 @@ TASK: draft (1) a polite customer letter body and (2) if requested, a chargeback
 HARD RULES: never write a literal amount, date, card number or name. Use ONLY these placeholders,
 which code fills in: {amount} {merchant} {txn_date} {case_id} {deadline}.
 Do not promise outcomes beyond the stated recommendation. No legal advice.
+NEVER say a refund has been processed, issued, paid, credited or reversed: this system cannot move
+money. For REFUND write that a refund "has been authorised" and that the bank makes the payment
+separately. Drafts with completed-payment wording are rejected and replaced by a template.
 """
 )
 

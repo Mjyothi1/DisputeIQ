@@ -210,7 +210,8 @@ def test_customer_complaint_is_processed_and_visible_to_reviewer(w: World) -> No
     assert any(i["id"] == did for i in w.reviewer.get("/disputes?status=AUTO_RESOLVED&status=NEEDS_HUMAN&page_size=100").json()["items"])
     mine = meera.get(f"/portal/disputes/{did}").json()
     assert mine["reference"] == f"DIQ-{did:06d}" and mine["merchant"] == "DemoMart Online"
-    assert mine["status"] == "APPROVED" and "not confirm that the money has been credited" in mine["message"]
+    assert mine["status"] == "APPROVED" and mine["status_label"] == "Refund authorised"
+    assert "authorised" in mine["message"] and "makes the payment" in mine["message"]
     body = str(mine)
     for secret in ("confidence", "rationale", "evidence", "mock-rules", "injection", "analyst"):
         assert secret not in body.lower(), secret

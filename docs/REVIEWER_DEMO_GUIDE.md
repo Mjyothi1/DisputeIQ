@@ -6,6 +6,9 @@
    transaction is taken from the bank's own records, not typed by the customer).
 3. Open a case: matched transaction, evidence checklist, confidence against the 0.85 threshold, model label, route
    reasons ("why this needs a person"), drafts and the audit timeline.
+   The letter draft carries a status line: for a case awaiting review it reads *"Draft only, not sent. Refund is
+   recommended, not approved."* The customer receives a letter only after a decision. If anyone edits a letter to
+   say the refund was processed or credited, a red warning appears, and the customer portal will not show that letter.
 4. Decide in the right-hand panel:
    - **Approve** the agent's recommendation, or **Approve with my edits** after editing the letter/filing;
    - **Override** (choose another decision; a written reason is required);
