@@ -122,6 +122,7 @@ def list_disputes(
                 amount=txn.amount if txn else None,
                 deadline_at=d.deadline_at, days_to_deadline=days_until(d.deadline_at, now),
                 filed_late=filed_late(d), created_at=d.created_at,
+                model=dec.model if dec else None,
             )
         )  # fmt: skip
     return s.DisputePage(items=items, total=total, page=page, page_size=page_size)

@@ -40,3 +40,21 @@ export function RecommendationBadge({ value }: { value: Recommendation | null })
   if (!value) return <span className="text-sm text-muted-foreground">Not yet</span>;
   return <Badge tone={REC_TONE[value]}>{RECOMMENDATION_LABEL[value]}</Badge>;
 }
+
+/** Which engine produced the latest decision. Offline rules are never labelled as AI/Gemini. */
+export function engineLabel(model: string | null | undefined): { label: string; tone: Tone; title: string } | null {
+  if (!model) return null;
+  if (model.startsWith("mock")) return { label: "Offline rules", tone: "neutral", title: `${model}: deterministic offline engine, not an LLM` };
+  if (model.startsWith("gemini")) return { label: "Gemini", tone: "info", title: `${model}: live Google Gemini` };
+  return { label: model, tone: "neutral", title: model };
+}
+
+export function EngineBadge({ model }: { model: string | null | undefined }) {
+  const e = engineLabel(model);
+  if (!e) return <span className="text-sm text-muted-foreground">-</span>;
+  return (
+    <span title={e.title}>
+      <Badge tone={e.tone}>{e.label}</Badge>
+    </span>
+  );
+}

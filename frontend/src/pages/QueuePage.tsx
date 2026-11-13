@@ -1,9 +1,9 @@
 import { AlertTriangle, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useConfig, useQueue } from "@/api/hooks";
+import { useConfig, useMetrics, useQueue } from "@/api/hooks";
 import type { DisputeSummary, QueueQuery, Status } from "@/api/types";
-import { RecommendationBadge, StatusBadge } from "@/components/badges";
+import { EngineBadge, RecommendationBadge, StatusBadge } from "@/components/badges";
 import { ConfidenceMeter } from "@/components/ConfidenceMeter";
 import { DeadlineGauge } from "@/components/DeadlineGauge";
 import { Button } from "@/components/ui/button";
@@ -12,19 +12,29 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { caseRef, formatInr, humanize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const PRESETS: { key: string; label: string; status: Status[] }[] = [
-  { key: "review", label: "Needs review", status: ["NEEDS_HUMAN"] },
-  { key: "new", label: "New", status: ["NEW"] },
-  { key: "active", label: "In progress", status: ["PROCESSING"] },
-  { key: "auto", label: "Auto-resolved", status: ["AUTO_RESOLVED"] },
-  { key: "closed", label: "Closed", status: ["APPROVED", "REJECTED", "OVERRIDDEN"] },
-  { key: "all", label: "All", status: [] },
+/** `optional` tabs (New, In progress) are only shown when they have cases or are selected. */
+export const PRESETS: { key: string; label: string; status: Status[]; optional?: boolean; empty: string }[] = [
+  { key: "review", label: "Needs review", status: ["NEEDS_HUMAN"], empty: "Nothing is waiting for a reviewer right now." },
+  { key: "new", label: "New", status: ["NEW"], optional: true, empty: "No new cases waiting for the agent." },
+  { key: "active", label: "In progress", status: ["PROCESSING"], optional: true, empty: "The agent is not processing anything right now." },
+  { key: "auto", label: "Auto-resolved", status: ["AUTO_RESOLVED"], empty: "No case has been auto-resolved yet." },
+  { key: "closed", label: "Closed", status: ["APPROVED", "REJECTED", "OVERRIDDEN"], empty: "No reviewer decisions yet." },
+  { key: "all", label: "All", status: [], empty: "No disputes in the system yet. Submit a complaint to create one." },
 ];
+
+/** Count per tab from the backend's live status totals (never hardcoded). */
+export function presetCount(byStatus: Record<string, number> | undefined, status: Status[]): number | null {
+  if (!byStatus) return null;
+  const keys = status.length ? status : Object.keys(byStatus);
+  return keys.reduce((n, k) => n + (byStatus[k] ?? 0), 0);
+}
 const PAGE_SIZE = 25;
 
 export function QueuePage() {
   const [searchParams] = useSearchParams();
   const config = useConfig();
+  const metrics = useMetrics();
+  const byStatus = metrics.data?.by_status;
   const threshold = config.data?.auto_confidence ?? 0.85;
   const atRisk = config.data?.at_risk_days ?? 7;
   const [preset, setPreset] = useState(searchParams.get("preset") ?? "review");
@@ -41,6 +51,14 @@ export function QueuePage() {
     if (p && PRESETS.some((item) => item.key === p)) setPreset(p);
     if (q !== null) setSearch(q);
   }, [searchParams]);
+
+  // Open on "Needs review" only when something needs review; otherwise show everything.
+  const [defaulted, setDefaulted] = useState(searchParams.get("preset") !== null);
+  useEffect(() => {
+    if (defaulted || !byStatus) return;
+    if ((byStatus.NEEDS_HUMAN ?? 0) === 0 && (presetCount(byStatus, []) ?? 0) > 0) setPreset("all");
+    setDefaulted(true);
+  }, [byStatus, defaulted]);
 
   const query: QueueQuery = {
     status: PRESETS.find((p) => p.key === preset)?.status ?? [],
@@ -93,7 +111,9 @@ export function QueuePage() {
           aria-label="Status"
           className="flex flex-wrap gap-1 rounded-control bg-muted p-1"
         >
-          {PRESETS.map((p) => (
+          {PRESETS.filter(
+            (p) => !p.optional || preset === p.key || (presetCount(byStatus, p.status) ?? 0) > 0,
+          ).map((p) => (
             <button
               key={p.key}
               role="tab"
@@ -107,6 +127,11 @@ export function QueuePage() {
               )}
             >
               {p.label}
+              {presetCount(byStatus, p.status) !== null && (
+                <span className="ml-1.5 rounded-full bg-muted px-1.5 text-xs tabular-nums text-muted-foreground">
+                  {presetCount(byStatus, p.status)}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -161,8 +186,14 @@ export function QueuePage() {
         </div>
       ) : data && data.items.length === 0 ? (
         <div className="rounded-panel border border-dashed border-border p-10 text-center">
-          <p className="font-medium">No cases match these filters.</p>
-          <p className="text-sm text-muted-foreground">Try another status, or clear the search.</p>
+          <p className="font-medium">
+            {search || dueSoon || lowConf
+              ? "No cases match these filters."
+              : PRESETS.find((p) => p.key === preset)?.empty}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {search || dueSoon || lowConf ? "Clear the search or filters, or pick another status." : "Pick another status tab above."}
+          </p>
         </div>
       ) : (
         data && (
@@ -243,6 +274,7 @@ function Table({
                 "Recommendation",
                 "Confidence",
                 "Deadline",
+                "Engine",
                 "Status",
               ].map((h) => (
                 <th key={h} scope="col" className="px-3 py-2.5 font-medium">
@@ -275,6 +307,9 @@ function Table({
                 </td>
                 <td className="px-3 py-3">
                   <DeadlineGauge days={d.days_to_deadline} atRiskDays={atRisk} filedLate={d.filed_late} />
+                </td>
+                <td className="px-3 py-3">
+                  <EngineBadge model={d.model} />
                 </td>
                 <td className="px-3 py-3">
                   <StatusBadge status={d.status} />

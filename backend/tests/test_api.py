@@ -461,3 +461,9 @@ def test_metrics_includes_evaluation_headline(
     assert env.client.get("/metrics").json()["evaluation"] == {"reason_code_accuracy": 0.9}
     f.write_text("not json")
     assert env.client.get("/metrics").json()["evaluation"] is None
+
+
+def test_queue_items_report_the_engine_that_decided(env: Env, processed: dict[str, int]) -> None:
+    items = env.client.get("/disputes?status=NEEDS_HUMAN&status=AUTO_RESOLVED&page_size=100").json()["items"]
+    decided = [i for i in items if i["recommendation"]]
+    assert decided and all(i["model"] == "mock-rules-v1" for i in decided)  # offline, labelled as such

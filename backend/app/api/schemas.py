@@ -83,6 +83,7 @@ class DisputeSummary(BaseModel):
     days_to_deadline: int | None
     filed_late: bool = False
     created_at: datetime
+    model: str | None = None  # engine of the latest decision, e.g. mock-rules-v1 or gemini-...
 
 
 class DisputePage(BaseModel):

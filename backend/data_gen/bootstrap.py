@@ -120,14 +120,34 @@ def ensure_demo_customers_if_enabled(
     return added
 
 
+_BOOTSTRAP_LOCK_KEY = 7002
+
+
 def run_startup_bootstrap(
     factory: sessionmaker[Session] | None = None, settings: Settings | None = None
 ) -> None:
-    """Startup order matters: the base dataset first (it needs an empty DB), then demo customers."""
+    """Startup order matters: the base dataset first (it needs an empty DB), then demo customers.
+
+    On PostgreSQL a session-level advisory lock ensures only ONE instance seeds at a time (Render
+    can briefly run the old and new instance together during a deploy); a second instance skips.
+    """
+    factory = factory or get_session_factory()
     settings = settings or get_settings()
-    if settings.bootstrap_demo_data:
-        ensure_demo_data(factory, settings)
-    ensure_demo_customers_if_enabled(factory, settings)
+    with factory() as lock_session:
+        postgres = lock_session.get_bind().dialect.name == "postgresql"
+        if postgres:
+            got = lock_session.scalar(select(func.pg_try_advisory_lock(_BOOTSTRAP_LOCK_KEY)))
+            if not got:
+                logger.warning("another instance is bootstrapping; skipping on this one")
+                return
+        try:
+            if settings.bootstrap_demo_data:
+                ensure_demo_data(factory, settings)
+            ensure_demo_customers_if_enabled(factory, settings)
+        finally:
+            if postgres:
+                lock_session.scalar(select(func.pg_advisory_unlock(_BOOTSTRAP_LOCK_KEY)))
+                lock_session.commit()
 
 
 if __name__ == "__main__":
