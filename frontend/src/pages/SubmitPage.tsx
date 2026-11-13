@@ -150,10 +150,10 @@ export function SubmitPage() {
           {customerId !== null && txns.data && txns.data.length > 0 && (
             <details className="mt-2 text-sm">
               <summary className="cursor-pointer text-muted-foreground">
-                Fill in from a recent transaction
+                Fill in from a recent transaction ({txns.data.length} shown, newest first)
               </summary>
-              <ul className="mt-2 space-y-1.5">
-                {txns.data.slice(0, 5).map((t) => (
+              <ul className="mt-2 max-h-64 space-y-1.5 overflow-y-auto">
+                {txns.data.map((t) => (
                   <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="min-w-[14rem]">
                       {t.merchant_name} · {money(t)} · {formatDate(t.txn_time)}

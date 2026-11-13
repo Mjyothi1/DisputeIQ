@@ -89,7 +89,7 @@ export const api = {
   reopen: (id: number, reason: string) =>
     request<CaseDetail>(`/disputes/${id}/reopen`, { method: "POST", body: JSON.stringify({ reason }) }),
   customers: (q: string) => request<Customer[]>(`/customers?limit=50&q=${encodeURIComponent(q)}`),
-  recentTxns: (id: number) => request<RecentTxn[]>(`/customers/${id}/transactions?limit=8`),
+  recentTxns: (id: number) => request<RecentTxn[]>(`/customers/${id}/transactions?limit=25`),
   reasonCodes: () => request<ReasonCode[]>("/reason-codes"),
   metrics: () => request<Metrics>("/metrics"),
   config: () => request<PublicConfig>("/config"),
