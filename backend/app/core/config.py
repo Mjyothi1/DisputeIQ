@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     # Signs customer-portal session tokens. Recommended in production; if empty a key is derived
     # from REVIEWER_ACCOUNTS (see app/core/security.py). Never commit a real value.
     auth_secret: str = ""
+    # Optional Gmail SMTP delivery for new-customer email verification.
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str = ""
+    smtp_app_password: str = ""
+    smtp_from_email: str = ""
     # Demo-only password for the six demo customers' portal logins (seeded with
     # BOOTSTRAP_DEMO_CUSTOMERS). Empty = no demo customer logins are created.
     demo_customer_password: str = ""
@@ -64,7 +70,7 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = ""
     langfuse_host: str = "https://cloud.langfuse.com"
 
-    @field_validator("gemini_api_key", "anthropic_api_key", "openai_api_key", mode="before")
+    @field_validator("gemini_api_key", "anthropic_api_key", "openai_api_key", "smtp_app_password", mode="before")
     @classmethod
     def _strip_secrets(cls, v: object) -> object:
         return v.strip() if isinstance(v, str) else v

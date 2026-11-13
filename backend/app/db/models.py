@@ -193,6 +193,11 @@ class CustomerAccount(Base):
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), unique=True)
     email: Mapped[str] = mapped_column(String(160), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    # Existing and seeded accounts remain verified; registrations explicitly set this to False.
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    email_verification_code_hash: Mapped[str | None] = mapped_column(String(64))
+    email_verification_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    email_verification_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_now())
 
     customer: Mapped[Customer] = relationship()

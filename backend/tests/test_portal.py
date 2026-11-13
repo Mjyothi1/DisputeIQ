@@ -103,15 +103,53 @@ def test_tokens_cannot_be_forged_tampered_or_reused_after_expiry() -> None:
 
 
 # ---- registration / login -------------------------------------------------------------------
-def test_register_login_and_profile(w: World) -> None:
+def test_register_requires_email_verification_then_allows_login(w: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "app.api.portal.send_customer_verification_code",
+        lambda settings, recipient, code: sent.append((recipient, code)),
+    )
     r = w.anon.post("/portal/register", json={"email": "New.User@Example.com", "password": "longenough1", "name": "New User"})
-    assert r.status_code == 201 and r.json()["role"] == "customer"
-    c = TestClient(app, headers={"Authorization": f"Bearer {r.json()['token']}"})
+    assert r.status_code == 201 and "token" not in r.json()
+    assert sent and sent[0][0] == "new.user@example.com"
+    pending = w.anon.post("/portal/login", json={"email": "new.user@example.com", "password": "longenough1"})
+    assert pending.status_code == 403 and "verify" in pending.json()["detail"].lower()
+    duplicate = w.anon.post("/portal/register", json={"email": "new.user@example.com", "password": "longenough1", "name": "X Y"})
+    assert duplicate.status_code == 409
+    verified = w.anon.post("/portal/verify-email", json={"email": "new.user@example.com", "code": sent[0][1]})
+    assert verified.status_code == 200 and verified.json()["role"] == "customer"
+    c = TestClient(app, headers={"Authorization": f"Bearer {verified.json()['token']}"})
     me = c.get("/portal/me").json()
     assert me["email"] == "new.user@example.com" and me["cards"] == []
-    assert w.anon.post("/portal/register", json={"email": "new.user@example.com", "password": "longenough1", "name": "X Y"}).status_code == 409
     ok = w.anon.post("/portal/login", json={"email": "new.user@example.com", "password": "longenough1"})
     assert ok.status_code == 200 and "password" not in ok.text.lower()
+    assert w.anon.post("/portal/verify-email", json={"email": "new.user@example.com", "code": sent[0][1]}).status_code == 400
+
+
+def test_resend_replaces_the_previous_verification_code(w: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[str] = []
+    monkeypatch.setattr(
+        "app.api.portal.send_customer_verification_code",
+        lambda settings, recipient, code: sent.append(code),
+    )
+    registered = w.anon.post(
+        "/portal/register",
+        json={"email": "resend@example.com", "password": "longenough1", "name": "Resend User"},
+    )
+    assert registered.status_code == 201
+    resent = w.anon.post("/portal/resend-verification", json={"email": "resend@example.com"})
+    assert resent.status_code == 200 and len(sent) == 2
+    assert w.anon.post(
+        "/portal/verify-email", json={"email": "resend@example.com", "code": sent[0]}
+    ).status_code == 400
+    assert w.anon.post(
+        "/portal/verify-email", json={"email": "resend@example.com", "code": sent[1]}
+    ).status_code == 200
+
+
+def test_registration_fails_closed_when_smtp_is_not_configured(w: World) -> None:
+    r = w.anon.post("/portal/register", json={"email": "nobody@example.com", "password": "longenough1", "name": "New User"})
+    assert r.status_code == 503
 
 
 def test_invalid_logins_are_rejected_uniformly(w: World) -> None:
@@ -121,10 +159,14 @@ def test_invalid_logins_are_rejected_uniformly(w: World) -> None:
     assert w.anon.post("/portal/login", json={"email": "x", "password": "short"}).status_code == 422
 
 
-def test_registration_cannot_grant_reviewer_role(w: World) -> None:
+def test_registration_cannot_grant_reviewer_role(w: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[str] = []
+    monkeypatch.setattr("app.api.portal.send_customer_verification_code", lambda settings, recipient, code: sent.append(code))
     r = w.anon.post("/portal/register", json={"email": "evil@example.com", "password": "longenough1", "name": "Evil", "role": "REVIEWER"})
-    assert r.status_code == 201 and r.json()["role"] == "customer"
-    c = TestClient(app, headers={"Authorization": f"Bearer {r.json()['token']}"})
+    assert r.status_code == 201 and "token" not in r.json()
+    verified = w.anon.post("/portal/verify-email", json={"email": "evil@example.com", "code": sent[0]})
+    assert verified.status_code == 200 and verified.json()["role"] == "customer"
+    c = TestClient(app, headers={"Authorization": f"Bearer {verified.json()['token']}"})
     assert c.get("/disputes").status_code == 403
 
 

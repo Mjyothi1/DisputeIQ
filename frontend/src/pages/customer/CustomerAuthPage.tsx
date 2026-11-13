@@ -23,9 +23,12 @@ export function CustomerAuthPage({ mode }: { mode: "login" | "register" }) {
     setBusy(true);
     setError(null);
     try {
-      const res = register
-        ? await portal.register(name.trim(), email.trim(), password)
-        : await portal.login(email.trim(), password);
+      if (register) {
+        await portal.register(name.trim(), email.trim(), password);
+        nav(`/customer/verify-email?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+        return;
+      }
+      const res = await portal.login(email.trim(), password);
       setCustomerToken(res.token);
       await qc.invalidateQueries({ queryKey: ["portal"] });
       nav("/customer");
