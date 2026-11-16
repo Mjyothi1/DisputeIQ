@@ -17,6 +17,7 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
+from app.agent.documents import NEED_INFO_BODY as docs_NEED_INFO
 from app.agent.llm import DEFAULT_PRICE, LLMResult
 from app.agent.schemas import (
     ClaimExtraction,
@@ -61,8 +62,7 @@ LETTERS = {
     "REJECT": "We have reviewed your dispute about the {amount} charge by {merchant} on {txn_date} "
     "(case {case_id}). Based on our records we are unable to raise a dispute for this charge. "
     "If you have additional information, please reply to this letter.",
-    "NEED_MORE_INFO": "We are reviewing your dispute (case {case_id}) but need more details to "
-    "identify the transaction. Please send the merchant name, the amount and the date of the charge.",
+    "NEED_MORE_INFO": docs_NEED_INFO,
 }
 
 

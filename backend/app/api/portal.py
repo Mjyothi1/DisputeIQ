@@ -283,8 +283,8 @@ def submit(body: ComplaintIn, p: Me, db: DB, background: BackgroundTasks, runner
         merchant, amount, txn_date, last4 = txn.merchant.name, txn.amount, txn.txn_time, txn.card.last4
         facts = f"[Customer portal] Category: {CATEGORIES[body.category]}. Selected transaction: {merchant}, Rs {amount:,.2f} on {txn_date:%d %b %Y}, card ending {last4}.\n"
     else:
-        if not body.merchant_name or body.amount is None or body.transaction_date is None:
-            raise HTTPException(422, "Enter merchant, amount and transaction date, or select a listed transaction.")
+        if not body.merchant_name or body.amount is None or body.transaction_date is None or not body.card_last4:
+            raise HTTPException(422, "Enter merchant, amount, transaction date and the last 4 digits of the card, or select a listed transaction.")
         merchant, amount, txn_date, last4 = body.merchant_name.strip(), body.amount, body.transaction_date, body.card_last4
         card_text = f", card ending {last4}" if last4 else ""
         facts = f"[Customer portal] Category: {CATEGORIES[body.category]}. Customer-provided transaction details (NOT BANK-VERIFIED): {merchant}, Rs {amount:,.2f} on {txn_date:%d %b %Y}{card_text}. Verify against issuer records before deciding.\n"
