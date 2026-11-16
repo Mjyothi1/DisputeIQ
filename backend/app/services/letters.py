@@ -22,6 +22,8 @@ PENDING = (DisputeStatus.NEW, DisputeStatus.PROCESSING, DisputeStatus.NEEDS_HUMA
 def facts_for(d: m.Dispute) -> docs.DocFacts:
     t = d.matched_txn or d.customer_txn
     tbc = "(to be confirmed)"
+    given = [k for k, v in (("merchant", d.customer_merchant), ("amount", d.customer_amount),
+                            ("date", d.customer_txn_date), ("card", d.customer_card_last4)) if v]
     return docs.DocFacts(
         case_id=docs.case_ref(d.id), customer_name=d.customer.name if d.customer else "",
         merchant=t.merchant.name if t else tbc, amount=docs.format_inr(t.amount) if t else tbc,
@@ -31,6 +33,7 @@ def facts_for(d: m.Dispute) -> docs.DocFacts:
         network=t.card.network.value if t else "-", txn_ref=f"TXN-{t.id}" if t else "-",
         channel=t.channel.value if t else "-", auth_method=t.auth_method.value if t else "-",
         mcc=t.merchant.mcc if t else "-", has_txn=t is not None,
+        info_needed=docs.info_needed_text(t is not None, d.reason_code, given),
     )  # fmt: skip
 
 

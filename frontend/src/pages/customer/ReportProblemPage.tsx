@@ -26,7 +26,7 @@ export function ReportProblemPage() {
   const [done, setDone] = useState<PortalComplaint | null>(null);
   const [error, setError] = useState<string | null>(null);
   const useManual = manual || (!txns.isLoading && !txns.data?.length);
-  const ready = (useManual ? merchant.trim().length >= 2 && Number(amount) > 0 && txnDate !== "" : txnId !== null) && category !== "" && text.trim().length >= 5;
+  const ready = (useManual ? merchant.trim().length >= 2 && Number(amount) > 0 && txnDate !== "" && last4.length === 4 : txnId !== null) && category !== "" && text.trim().length >= 5;
 
   if (done) {
     return (
@@ -51,7 +51,7 @@ export function ReportProblemPage() {
     if (!ready) return;
     setError(null);
     try {
-      setDone(await report.mutateAsync(useManual ? { merchant_name: merchant.trim(), amount, transaction_date: txnDate + "T00:00:00Z", card_last4: last4 || undefined, category, description: text.trim() } : { transaction_id: txnId!, category, description: text.trim() }));
+      setDone(await report.mutateAsync(useManual ? { merchant_name: merchant.trim(), amount, transaction_date: txnDate + "T00:00:00Z", card_last4: last4, category, description: text.trim() } : { transaction_id: txnId!, category, description: text.trim() }));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not submit. Please try again.");
     }
@@ -88,7 +88,7 @@ export function ReportProblemPage() {
           <div><Label htmlFor="merchant">Merchant name *</Label><Input id="merchant" value={merchant} onChange={(e) => setMerchant(e.target.value)} required /></div>
           <div><Label htmlFor="amount">Amount (₹) *</Label><Input id="amount" type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required /></div>
           <div><Label htmlFor="txn-date">Transaction date *</Label><Input id="txn-date" type="date" value={txnDate} onChange={(e) => setTxnDate(e.target.value)} required /></div>
-          <div><Label htmlFor="last4">Card last 4 digits (optional)</Label><Input id="last4" inputMode="numeric" maxLength={4} value={last4} onChange={(e) => setLast4(e.target.value.replace(/\\D/g, "").slice(0, 4))} /></div>
+          <div><Label htmlFor="last4">Card last 4 digits *</Label><Input id="last4" inputMode="numeric" maxLength={4} required value={last4} onChange={(e) => setLast4(e.target.value.replace(/\\D/g, "").slice(0, 4))} /></div>
           <p className="text-xs text-muted-foreground">These details are customer-provided and not bank-verified. A reviewer must check them against issuer records. Never enter your full card number, CVV or OTP.</p>
         </div>}
 

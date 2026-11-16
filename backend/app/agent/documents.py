@@ -16,7 +16,7 @@ from app.core.timeutil import as_utc
 from app.db.enums import Recommendation
 from app.rules.types import EvidenceItem
 
-PLACEHOLDERS = ("amount", "merchant", "txn_date", "case_id", "deadline")
+PLACEHOLDERS = ("amount", "merchant", "txn_date", "case_id", "deadline", "info_needed")
 _MONEY = re.compile(r"(?:Rs\.?|INR|₹)\s?\d", re.I)
 _LONG_NUMBER = re.compile(r"\d{4,}")
 _DATE = re.compile(
@@ -40,11 +40,90 @@ REFUND_AUTHORISED_SENTENCE = (
 )
 _BAD_PLACEHOLDER = re.compile(r"\{(?!(?:" + "|".join(PLACEHOLDERS) + r")\})[^}]*\}")
 
+NEED_INFO_BODY = (
+    "Thank you for contacting us (case {case_id}). We are reviewing your dispute but cannot "
+    "proceed yet because we need a few more details from you. Please reply with:\n\n{info_needed}\n\n"
+    "For your security, never send your full card number, CVV, PIN or OTP. Once we receive "
+    "these details we will continue the review and write to you again."
+)
+
+_REASON_REQUESTS = {
+    "GOODS_NOT_RECEIVED": [
+        "Your order number or booking reference and the date you ordered",
+        "The delivery date you were promised, and what has (or has not) arrived",
+        "Any messages or emails with the merchant about the missing item or service",
+    ],
+    "NOT_AS_DESCRIBED": [
+        "What you ordered and how what you received differs from it",
+        "Photos or screenshots showing the problem",
+        "Any messages or emails with the merchant, including any return or exchange request",
+    ],
+    "CANCELLED_RECURRING": [
+        "The date you cancelled the subscription or standing instruction",
+        "The cancellation confirmation or reference number from the merchant",
+    ],
+    "INCORRECT_AMOUNT": [
+        "The amount you expected to be charged",
+        "The bill, invoice or receipt showing the agreed amount",
+    ],
+    "REFUND_NOT_PROCESSED": [
+        "The date and amount of the refund the merchant promised",
+        "The refund confirmation or reference the merchant gave you",
+    ],
+    "DUPLICATE_CHARGE": [
+        "The date and amount of each charge you believe is a duplicate",
+        "Confirmation that you made only one purchase",
+    ],
+    "ATM_CASH_NOT_DISPENSED": [
+        "The ATM location and approximate time of the withdrawal",
+        "The amount requested, and the receipt or on-screen error message if you have it",
+    ],
+    "FRAUD_NOT_AUTHORISED": [
+        "Whether the card was with you at the time, and when you last used it",
+        "Whether you shared any OTP or card details with anyone (do not include the details themselves)",
+        "When you first noticed the charge",
+    ],
+}
+
+
+def info_needed_text(
+    has_txn: bool,
+    reason_code: str | None,
+    given: Sequence[str] = (),
+) -> str:
+    """Bulleted list of exactly what the customer should send, tailored to this case.
+
+    ``given`` names the transaction details the customer already supplied
+    (merchant / amount / date / card), so we never ask for them again.
+    """
+    items: list[str] = []
+    if not has_txn:
+        asks = {
+            "merchant": "The merchant name exactly as it appears on your statement",
+            "amount": "The amount charged",
+            "date": "The date of the charge",
+            "card": "The last 4 digits of the card used",
+        }
+        items += [text for key, text in asks.items() if key not in given]
+        items.append(
+            "A screenshot or statement line showing the charge (hide your full card number)"
+            if not items
+            else "If possible, a screenshot or statement line showing the charge (hide your full card number)"
+        )
+        items.append("Why you believe the charge is wrong")
+    else:
+        items += _REASON_REQUESTS.get(
+            reason_code or "",
+            ["A fuller description of what went wrong, including dates and anything the merchant told you"],
+        )
+    return "\n".join(f"  - {i}" for i in items)
+
+
 FALLBACK_BODY = {
     Recommendation.REFUND: "We have reviewed your dispute about the {amount} charge by {merchant} on {txn_date} (case {case_id}) and " + REFUND_AUTHORISED_SENTENCE + ".",
     Recommendation.FILE_CHARGEBACK: "We have reviewed your dispute about the {amount} charge by {merchant} on {txn_date} (case {case_id}). We are raising a formal dispute with the merchant on your behalf and will update you on the outcome.",
     Recommendation.REJECT: "We have reviewed your dispute about the {amount} charge by {merchant} on {txn_date} (case {case_id}). Based on our records we are unable to raise a dispute for this charge. If you have further information, please reply to this letter.",
-    Recommendation.NEED_MORE_INFO: "We are reviewing your dispute (case {case_id}) but need more details to identify the transaction. Please send the merchant name, the amount and the date of the charge.",
+    Recommendation.NEED_MORE_INFO: NEED_INFO_BODY,
 }  # fmt: skip
 FALLBACK_NARRATIVE = (
     "Cardholder disputes the {amount} charge by {merchant} on {txn_date} (case {case_id}). "
@@ -70,6 +149,7 @@ class DocFacts:
     auth_method: str
     mcc: str
     has_txn: bool = True
+    info_needed: str = ""
 
     def placeholders(self) -> dict[str, str]:
         return {p: getattr(self, p) for p in PLACEHOLDERS}
@@ -148,7 +228,7 @@ PENDING_BODY = {
     Recommendation.REFUND: "Thank you for contacting us about the {amount} charge by {merchant} on {txn_date} (case {case_id}). Your dispute is currently under review. Our checks so far support your claim, and a refund has been recommended; it has not yet been approved. We will write to you again as soon as a decision is made. You do not need to do anything further.",
     Recommendation.FILE_CHARGEBACK: "Thank you for contacting us about the {amount} charge by {merchant} on {txn_date} (case {case_id}). Your dispute is currently under review. Our checks so far support your claim, and raising a formal dispute with the merchant has been recommended; this has not yet been approved. We will write to you again as soon as a decision is made.",
     Recommendation.REJECT: "Thank you for contacting us about the {amount} charge by {merchant} on {txn_date} (case {case_id}). Your dispute is currently under review by our team. We will write to you again as soon as a decision is made.",
-    Recommendation.NEED_MORE_INFO: "Thank you for contacting us (case {case_id}). Your dispute is currently under review. To help us identify the transaction, please reply with the merchant name, the amount and the date of the charge.",
+    Recommendation.NEED_MORE_INFO: NEED_INFO_BODY,
 }  # fmt: skip
 
 

@@ -570,6 +570,11 @@ class Pipeline:
             auth_method=txn.auth_method.value if txn else "-",
             mcc=txn.merchant.mcc if txn else "-",
             has_txn=txn is not None,
+            info_needed=docs.info_needed_text(
+                txn is not None, state.get("reason_code"),
+                [k for k, v in (("merchant", d.customer_merchant), ("amount", d.customer_amount),
+                                ("date", d.customer_txn_date), ("card", d.customer_card_last4)) if v],
+            ),
         )  # fmt: skip
 
     def draft_documents(self, state: AgentState) -> dict[str, Any]:
